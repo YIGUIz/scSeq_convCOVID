@@ -1,0 +1,47 @@
+makeSHMdf <- function(bcr_loc = 5921798, prefix.pat = "old1798_", bcr_VDJ = old1798_B){
+  old1798_ig <- igblast.readin(bcr_location = bcr_loc, prefix = prefix.pat, bcr_VDJ_data = bcr_VDJ)
+  triplicated_id <- old1798_ig$sequence_id[triplicated(old1798_ig$sequence_id)]
+  old1798_ig <- old1798_ig[!old1798_ig$sequence_id %in% triplicated_id,]
+  
+  old1798_ig_h <- old1798_ig[old1798_ig$locus == "IGH",]
+  old1798_ig_l <- old1798_ig[old1798_ig$locus %in% c("IGL", "IGK"),]
+  old1798_ig_h <- old1798_ig_h[old1798_ig_h$sequence_id %in% old1798_ig_l$sequence_id,]
+  old1798_ig_l <- old1798_ig_l[old1798_ig_l$sequence_id %in% old1798_ig_h$sequence_id,]
+  sum(old1798_ig_h$sequence_id == old1798_ig_l$sequence_id) == nrow(old1798_ig_l)
+  
+  old1798_ig_h$SHM_VH <- old1798_ig_h[,"v_identity"]
+  old1798_ig_h$SHM_VL <- old1798_ig_l[,"v_identity"]
+  old1798_ig_h$SHM_VHVL <- rowSums(old1798_ig_h[,c(49,50)])/2
+
+  old1798_shm <- old1798_ig_h[,c(1,49,50,51)]
+  rownames(old1798_shm) <- old1798_shm[,1]
+  colnames(old1798_shm) <- c("barcode", "SHM_VH", "SHM_VL", "SHM_VHVL")
+  #old1798_shm <- subset(old1798_shm, select = 2)
+  old1798_shm.clones <- left_join(old1798_shm,bcr_VDJ[,c(7,15)],by = "barcode")
+  shm_clonotypes <- 
+  old1798_shm.clones %>% 
+  dplyr::group_by(clonotype_new) %>% 
+  nest(.key = "clonotype_new")
+  sample_length.VH = function(x) {
+  length_sample <- mean(as.double(as.data.frame(x)[,2]))
+  return(length_sample)
+  }
+  sample_length.VL = function(x) {
+  length_sample <- mean(as.double(as.data.frame(x)[,3]))
+  return(length_sample)
+  }
+  sample_length.VH_VL = function(x) {
+  length_sample <- mean(as.double(as.data.frame(x)[,4]))
+  return(length_sample)
+  }
+  shm_clonotypes$clonal_SHM_VH <- unlist(lapply(shm_clonotypes$clonotype_new...2, sample_length.VH))
+  shm_clonotypes$clonal_SHM_VL <- unlist(lapply(shm_clonotypes$clonotype_new...2, sample_length.VL))
+  shm_clonotypes$clonal_SHM_VH_VL <- unlist(lapply(shm_clonotypes$clonotype_new...2, sample_length.VH_VL))
+
+  shm_clonotypes <- unnest(shm_clonotypes, cols = clonotype_new...2)
+  shm_clonotypes <- as.data.frame(shm_clonotypes)
+  colnames(shm_clonotypes) <- c("clonotype_new", "barcode", "SHM_VH", "SHM_VL", "SHM_VHVL", 
+                                "clonal_SHM_VH", "clonal_SHM_VL", "clonal_SHM_VHVL")
+  rownames(shm_clonotypes) <- shm_clonotypes$barcode
+  return(shm_clonotypes)
+}
