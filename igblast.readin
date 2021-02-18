@@ -1,0 +1,12 @@
+igblast.readin <- function(bcr_location, prefix, bcr_VDJ_data){
+  VDJ_igblast <- read_tsv(paste("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/",bcr_location,"/", bcr_location,"_BC/outs/igblast_results/",bcr_location,"_BC_db-pass.tsv", sep=""))
+
+  VDJ_igblast <- as.data.frame(VDJ_igblast)
+  VDJ_igblast$sequence_id <- gsub("-1_contig_\\d", "", VDJ_igblast$sequence_id)
+  VDJ_igblast$sequence_id <- paste0(prefix, VDJ_igblast$sequence_id)
+
+  VDJ_igblast <- VDJ_igblast[VDJ_igblast$sequence_id %in% bcr_VDJ_data$barcode,]
+  VDJ_igblast <- VDJ_igblast[VDJ_igblast$productive,]
+  VDJ_igblast <- VDJ_igblast[-grep('^\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.+', VDJ_igblast$sequence_alignment),]
+  return(VDJ_igblast)
+}
