@@ -1,0 +1,2400 @@
+Loading packages
+```{r}
+library(colorspace)
+library(Seurat)
+library(mclust)
+library(dplyr)
+library(sctransform)
+library(DESeq2)
+library(cowplot)
+library(patchwork)
+library(harmony)
+library(Rcpp)
+library(tuple)
+library(tidyr)
+library(tidyverse)
+library(ggtree)
+library(stringdist)
+library(ape)
+library(data.table)
+library(fastcluster)
+library(ggplot2)
+library(circlize)
+library(pheatmap)
+library(slingshot)
+library(princurve)
+```
+
+Data read in 1 - Read10X
+```{r}
+covidold1798_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5921798/filtered_feature_bc_matrix/")
+
+covidold1840_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5921840/filtered_feature_bc_matrix/")
+
+covidyoung1925_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5921925/filtered_feature_bc_matrix/")
+
+covidold2051_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5922051/filtered_feature_bc_matrix/")
+
+covidyoung2423_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5922423/filtered_feature_bc_matrix/")
+
+covidyoung2425_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5922425/filtered_feature_bc_matrix/")
+
+covidyoung2427_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5922427/filtered_feature_bc_matrix/")
+
+covidold2453_all.data <- Read10X(data.dir = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_GEX_analysis/Both_flowcell_alignments/5922453/filtered_feature_bc_matrix/")
+```
+
+Optional: Deletion of genes
+```{r}
+features_to_delete <- geneTCRBCR(Data = covidold1798_all.data)
+covidold1798_all.data <- covidold1798_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidold1840_all.data)
+covidold1840_all.data <- covidold1840_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidyoung1925_all.data)
+covidyoung1925_all.data <- covidyoung1925_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidold2051_all.data)
+covidold2051_all.data <- covidold2051_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidyoung2423_all.data)
+covidyoung2423_all.data <- covidyoung2423_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidyoung2425_all.data)
+covidyoung2425_all.data <- covidyoung2425_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidyoung2427_all.data)
+covidyoung2427_all.data <- covidyoung2427_all.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = covidold2453_all.data)
+covidold2453_all.data <- covidold2453_all.data[-features_to_delete,]
+# healthy
+features_to_delete <- geneTCRBCR(Data = h_donor.data)
+h_donor.data <- h_donor.data[-features_to_delete,]
+
+features_to_delete <- geneTCRBCR(Data = h_donor10k.data)
+h_donor10k.data <- h_donor10k.data[-features_to_delete,]
+
+geneTCRBCR <- function(Data = covidold1798.data){
+   TCRBCR.features <- c(grep('^TRAV', rownames(Data)),
+                       grep('^TRAJ', rownames(Data)),
+                       grep('^TRBV', rownames(Data)),
+                       grep('^TRBD', rownames(Data)),
+                     grep('^TRBJ', rownames(Data)),
+                  grep('^IGHV', rownames(Data)),
+                  grep('^IGHA', rownames(Data)),
+                  grep('^IGHG', rownames(Data)),
+                  grep('^IGHM', rownames(Data)),
+                  grep('^IGHD', rownames(Data)),
+                  grep('^IGHJ', rownames(Data)),
+                  grep('^IGK', rownames(Data)),
+                  grep('^IGL', rownames(Data)),
+                  grep('^JCHAIN',rownames(Data)))
+    return(TCRBCR.features)
+}
+
+covid.all.BCRonly_nodoub_sct[grep('^IGH', rownames(covid.all.BCRonly_nodoub_sct@assays$RNA)),]
+# TRAC, TRBC1, TRBC2, IGHE, JCHAIN
+```
+
+Data read in 2 - CreateSeuratObject/merge/QC
+```{r}
+covidold1798_all <- CreateSeuratObject(counts = covidold1798_all.data, project = "old1798", min.cells = 3, min.features = 200)
+covidold1840_all <- CreateSeuratObject(counts = covidold1840_all.data, project = "old1840", min.cells = 3, min.features = 200)
+covidyoung1925_all <- CreateSeuratObject(counts = covidyoung1925_all.data, project = "young1925", min.cells = 3, min.features = 200)
+covidold2051_all <- CreateSeuratObject(counts = covidold2051_all.data, project = "old2051", min.cells = 3, min.features = 200)
+covidyoung2423_all <- CreateSeuratObject(counts = covidyoung2423_all.data, project = "young2423", min.cells = 3, min.features = 200)
+covidyoung2425_all <- CreateSeuratObject(counts = covidyoung2425_all.data, project = "young2425", min.cells = 3, min.features = 200)
+covidyoung2427_all <- CreateSeuratObject(counts = covidyoung2427_all.data, project = "young2427", min.cells = 3, min.features = 200)
+covidold2453_all <- CreateSeuratObject(counts = covidold2453_all.data, project = "old2453", min.cells = 3, min.features = 200)
+
+covid.all <- merge(covidold1798_all, y = c(covidold1840_all, covidyoung1925_all, covidold2051_all, 
+                                       covidyoung2423_all, covidyoung2425_all, covidyoung2427_all,
+                                       covidold2453_all), 
+                   add.cell.ids = c("old1798", "old1840", "young1925", "old2051", "young2423",
+                                   "young2425", "young2427", "old2453"), 
+                   project = "covidlateall")
+# QC
+covid.all[["percent.mt"]] <- PercentageFeatureSet(object = covid.all, pattern = "^MT-")
+head(covid.all@meta.data, 5)
+
+VlnPlot(covid.all.TCR_SCT_PCA, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(object = covid.all.BCRonly_nodoub16062020, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(object = covid.all, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+#nFeature_RNA: genes per cell; nCount_RNA: molecules detected per cell
+covid.all <- subset(x = covid.all, subset = nFeature_RNA > 150 & nFeature_RNA < 3500 & percent.mt < 10)
+```
+
+
+1. Dataset Preparation
+- 1. Integrate TCR and BCR data to split into T and B cell subsets:
+```{r}
+covid.all.T <- covid.all
+covid.all.T@meta.data[covid.all.T@meta.data$orig.ident == "old1798",]
+#old1798  old1840   young1925   old2051   young2423   young2425   young2427   old2453
+covid.all.VDJ.1798_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921798/5921798_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "old1798_")
+
+covid.all.VDJ.1840_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921840/5921840_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "old1840_")
+
+covid.all.VDJ.1925_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921925/5921925_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "young1925_")
+
+covid.all.VDJ.2051_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922051/5922051_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "old2051_")
+
+covid.all.VDJ.2423_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922423/5922423_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "young2423_")
+
+covid.all.VDJ.2425_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922425/5922425_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "young2425_")
+
+covid.all.VDJ.2427_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922427/5922427_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "young2427_")
+
+covid.all.VDJ.2453_TCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922453/5922453_TC/outs/", 
+                                  seurat_obj = covid.all.T,
+                                  prefix = "old2453_")
+
+all_VDJ_metadata <- rbind(covid.all.VDJ.1798_TCR, covid.all.VDJ.1840_TCR, covid.all.VDJ.1925_TCR, covid.all.VDJ.2051_TCR, 
+          covid.all.VDJ.2423_TCR, covid.all.VDJ.2425_TCR, covid.all.VDJ.2427_TCR, covid.all.VDJ.2453_TCR)
+rownames(all_VDJ_metadata) <- c(rownames(covid.all.VDJ.1798_TCR),rownames(covid.all.VDJ.1840_TCR), rownames(covid.all.VDJ.1925_TCR), rownames(covid.all.VDJ.2051_TCR), rownames(covid.all.VDJ.2423_TCR), rownames(covid.all.VDJ.2425_TCR), rownames(covid.all.VDJ.2427_TCR), rownames(covid.all.VDJ.2453_TCR))
+
+covid.all.T <- AddMetaData(object=covid.all.T, metadata=all_VDJ_metadata)
+Idents(covid.all.T) <- "TCR"
+covid.all.T <- AddMetaData(covid.all.T, metadata =!is.na(covid.all.T@meta.data$clonotype_id), col.name = "TCR")
+covid.all.TCRonly <- subset(covid.all.T, subset = TCR == TRUE)
+barplot(table(covid.all.TCRonly@meta.data$clonotype_id))
+
+Idents(covid.all.TCRonly) <- "Age"
+FindMarkers(covid.all.TCRonly, ident.1 = "old", ident.2 = "young")
+Idents(covid.all.T) <- "SCT_snn_res.0.4"
+FindMarkers(covid.all.T, ident.1 = 3, min.pct = 0.25, logfc.threshold = 0.5)
+```
+- 1.2 BCR data integration:
+```{r}
+covid.all.B <- covid.all
+covid.all.B@meta.data[covid.all.B@meta.data$orig.ident == "old1798",]
+#old1798  old1840   young1925   old2051   young2423   young2425   young2427   old2453
+covid.all.VDJ.1798_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921798/5921798_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "old1798_")
+
+covid.all.VDJ.1840_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921840/5921840_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "old1840_")
+
+covid.all.VDJ.1925_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921925/5921925_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "young1925_")
+
+covid.all.VDJ.2051_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922051/5922051_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "old2051_")
+
+covid.all.VDJ.2423_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922423/5922423_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "young2423_")
+
+covid.all.VDJ.2425_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922425/5922425_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "young2425_")
+
+covid.all.VDJ.2427_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922427/5922427_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "young2427_")
+
+covid.all.VDJ.2453_BCR <- add_clonotype(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922453/5922453_BC/outs/", 
+                                  seurat_obj = covid.all.B,
+                                  prefix = "old2453_")
+
+all_VDJ_metadata <- rbind(covid.all.VDJ.1798_BCR, covid.all.VDJ.1840_BCR, covid.all.VDJ.1925_BCR, covid.all.VDJ.2051_BCR, 
+          covid.all.VDJ.2423_BCR, covid.all.VDJ.2425_BCR, covid.all.VDJ.2427_BCR, covid.all.VDJ.2453_BCR)
+rownames(all_VDJ_metadata) <- c(rownames(covid.all.VDJ.1798_BCR),rownames(covid.all.VDJ.1840_BCR), rownames(covid.all.VDJ.1925_BCR), rownames(covid.all.VDJ.2051_BCR), rownames(covid.all.VDJ.2423_BCR), rownames(covid.all.VDJ.2425_BCR), rownames(covid.all.VDJ.2427_BCR), rownames(covid.all.VDJ.2453_BCR))
+
+covid.all.B <- AddMetaData(object=covid.all.B, metadata=all_VDJ_metadata)
+covid.all.B@meta.data
+covid.all.B <- AddMetaData(covid.all.B, metadata =!is.na(covid.all.B@meta.data$clonotype_id), col.name = "BCR")
+covid.all.BCRonly <- subset(covid.all.B, subset = BCR == TRUE)
+barplot(table(covid.all.BCRonly@meta.data$clonotype_id))
+
+Idents(covid.all.BCRonly) <- "Age"
+FindMarkers(covid.all.BCRonly, ident.1 = 'old', ident.2 = 'young')
+Idents(covid.all.BCRonly) <- "SCT_snn_res.0.4"
+FindMarkers(covid.all.BCRonly, ident.1 = 3, min.pct = 0.25, logfc.threshold = 0.5)
+```
+
+- 2. Get rid of doublets:
+```{r}
+covid.all.TCRonly
+covid.all.BCRonly
+# Define cells that have TCR and BCR:
+doublet_TCR_index <- rownames(covid.all.TCRonly@meta.data) %in% rownames(covid.all.BCRonly@meta.data)
+doublet_barcodes <- rownames(covid.all.TCRonly@meta.data)[doublet_TCR_index]
+doublet_BCR_index <- rownames(covid.all.BCRonly@meta.data) %in% doublet_barcodes
+# Add metadata column to each object that marks doublets with TRUE:
+covid.all.TCRonly <- AddMetaData(covid.all.TCRonly, metadata = doublet_TCR_index, col.name = "Doublets")
+covid.all.BCRonly <- AddMetaData(covid.all.BCRonly, metadata = doublet_BCR_index, col.name = "Doublets")
+# Subset data to get rid of doublets:
+covid.all.TCRonly_nodoub <- subset(covid.all.TCRonly, subset = Doublets == FALSE)
+covid.all.BCRonly_nodoub <- subset(covid.all.BCRonly, subset = Doublets == FALSE)
+```
+
+- 3. SCTransform and PCA on Euler cluster
+```{r}
+# Made on euler
+seurat_object <- covid.all.TCRonly_nodoub
+seurat_object <- covid.all.BCRonly_nodoub
+# Split merged object to normalise separately:
+seurat_object.list <- SplitObject(seurat_object, split.by = "orig.ident")
+for (i in 1:length(seurat_object.list)) {
+    seurat_object.list[[i]] <- SCTransform(seurat_object.list[[i]], verbose = FALSE)
+}
+# Save variable features:
+covid.features <- SelectIntegrationFeatures(object.list = seurat_object.list, nfeatures = 3000)
+# Merge data and run PCA:
+seurat_object.merged <- merge(seurat_object.list[[1]], y = seurat_object.list[2:length(seurat_object.list)], project = "ova.all", merge.data = TRUE)
+VariableFeatures(seurat_object.merged) <- covid.features
+seurat_object.merged <- RunPCA(object = seurat_object.merged, assay = "SCT", npcs = 50)
+# Read in R object from euler:
+```
+
+- 3.1 Harmony and UMAP:
+```{r}
+seurat_object <- covid.all.TCRonly_nodoub_sct
+seurat_object <- covid.all.BCRonly_nodoub_sct
+
+seurat_object <- RunHarmony(object = seurat_object,
+                                    assay.use = "SCT",
+                                    reduction = "pca",
+                                    dims.use = 1:50,
+                                    group.by.vars = "orig.ident",
+                                    plot_convergence = TRUE)
+seurat_object <- RunUMAP(object = seurat_object, assay = "SCT", reduction = "harmony", dims = 1:50)
+seurat_object <- FindNeighbors(object = seurat_object, assay = "SCT", reduction = "harmony", dims = 1:50)
+seurat_object <- FindClusters(object = seurat_object, resolution = .5)
+
+saveRDS(o_ova.all, "/Users/fbieberich/Desktop/o_ova_all4.rds")
+```
+
+- 4 Dataset Split and CleanUp - Split T cell dataset into cd4 and cd8 and get rid of CD3 and PCs in B cell dataset:
+```{r}
+# T cells
+covid.all.TCRonly_nodoub_sct.cd4 <- subset(covid.all.TCRonly_nodoub_sct, 
+                       cells = WhichCells(covid.all.TCRonly_nodoub_sct, expression = CD4>0 & CD8A==0))
+covid.all.TCRonly_nodoub_sct.cd8 <- subset(covid.all.TCRonly_nodoub_sct, 
+                       cells = WhichCells(covid.all.TCRonly_nodoub_sct, expression = CD4==0 & CD8A>0))
+covid.all.TCRonly_nodoub_sct.dn <- subset(covid.all.TCRonly_nodoub_sct, 
+                       cells = WhichCells(covid.all.TCRonly_nodoub_sct, expression = CD4==0 & CD8A==0 & CD8B==0))
+
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object.list <- SplitObject(seurat_object, split.by = "orig.ident")
+for (i in 1:length(seurat_object.list)) {
+    seurat_object.list[[i]] <- SCTransform(seurat_object.list[[i]], verbose = FALSE)
+}
+# Save variable features:
+covid.features <- SelectIntegrationFeatures(object.list = seurat_object.list, nfeatures = 3000)
+# Merge data and run PCA:
+seurat_object.merged <- merge(seurat_object.list[[1]], y = seurat_object.list[2:length(seurat_object.list)], project = "covid_late_TCR", merge.data = TRUE)
+VariableFeatures(seurat_object.merged) <- covid.features
+
+# B cells
+# Filter out CD3+ cells from B cell subset:
+seurat_object <- covid.all.BCRonly_nodoub_sct
+bcell.nocd3 <- subset(seurat_object, cells=WhichCells(seurat_object, expression = CD3E==0))
+bcell.nocd3nopc <- subset(bcell.nocd3, cells=WhichCells(bcell.nocd3, idents = c(0,1,2,3,4,5,6,8)))
+
+# PCA, Harmony, UMAP for both:
+seurat_object <- bcell.nocd3nopc
+seurat_object <- RunPCA(object = seurat_object, assay = "SCT", npcs = 50)
+#seurat_object <- seurat_object.merged
+seurat_object <- RunHarmony(object = seurat_object,
+                                    assay.use = "SCT",
+                                    reduction = "pca",
+                                    dims.use = 1:50,
+                                    group.by.vars = "orig.ident",
+                                    plot_convergence = TRUE)
+seurat_object <- RunUMAP(object = seurat_object, assay = "SCT", reduction = "harmony", dims = 1:50)
+seurat_object <- FindNeighbors(object = seurat_object, assay = "SCT", reduction = "harmony", dims = 1:50)
+seurat_object <- FindClusters(object = seurat_object, resolution = 0.3)
+bcell.nocd3nopc <- seurat_object
+```
+
+
+2. VDJ read in and preparation
+- 1.1 Read in, rename and redefine BCR clonotypes:
+```{r}
+old5921798_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921798/5921798_BC/outs/", prefix = "old1798_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5921840_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921840/5921840_BC/outs/", prefix = "old1840_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5921925_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921925/5921925_BC/outs/", prefix = "young1925_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5922051_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922051/5922051_BC/outs/", prefix = "old2051_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922423_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922423/5922423_BC/outs/", prefix = "young2423_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922425_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922425/5922425_BC/outs/", prefix = "young2425_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922427_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922427/5922427_BC/outs/", prefix = "young2427_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5922453_BCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922453/5922453_BC/outs/", prefix = "old2453_", VDJinfo = c("IGH", "IGK", "IGL"))
+```
+- 1.2 Read in, rename and redefine TCR clonotypes:
+```{r}
+old5921798_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921798/5921798_TC/outs/", prefix = "old1798_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+old5921840_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921840/5921840_TC/outs/", prefix = "old1840_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+young5921925_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921925/5921925_TC/outs/", prefix = "young1925_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+old5922051_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922051/5922051_TC/outs/", prefix = "old2051_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+young5922423_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922423/5922423_TC/outs/", prefix = "young2423_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+young5922425_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922425/5922425_TC/outs/", prefix = "young2425_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+young5922427_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922427/5922427_TC/outs/", prefix = "young2427_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+old5922453_TCR <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922453/5922453_TC/outs/", prefix = "old2453_", VDJinfo = c("TRA", "TRB", "TRB"), reversing=T)
+```
+- 1.3 Read in, rename and redefine Plasmacell clonotypes:
+```{r}
+old5921798_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921798/5921798_PC/outs/", prefix = "old1798_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5921840_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921840/5921840_PC/outs/", prefix = "old1840_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5921925_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5921925/5921925_PC/outs/", prefix = "young1925_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5922051_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922051/5922051_PC/outs/", prefix = "old2051_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922423_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922423/5922423_PC/outs/", prefix = "young2423_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922425_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922425/5922425_PC/outs/", prefix = "young2425_", VDJinfo = c("IGH", "IGK", "IGL"))
+young5922427_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922427/5922427_PC/outs/", prefix = "young2427_", VDJinfo = c("IGH", "IGK", "IGL"))
+old5922453_PC <- filter_clonotypes(tcr_location = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/10X_VDJ_alignments/5922453/5922453_PC/outs/", prefix = "old2453_", VDJinfo = c("IGH", "IGK", "IGL"))
+```
+
+- 2. Prepare data:
+```{r}
+old1798_B <- clonoype.def(old5921798_BCR)
+old1840_B <- clonoype.def(old5921840_BCR)
+old2051_B <- clonoype.def(old5922051_BCR)
+old2453_B <- clonoype.def(old5922453_BCR)
+young1925_B <- clonoype.def(young5921925_BCR)
+young2423_B <- clonoype.def(young5922423_BCR)
+young2425_B <- clonoype.def(young5922425_BCR)
+young2427_B <- clonoype.def(young5922427_BCR)
+
+old1798_T <- clonoype.def(old5921798_TCR, whichColumn=6)
+old1840_T <- clonoype.def(old5921840_TCR, whichColumn=6)
+old2051_T <- clonoype.def(old5922051_TCR, whichColumn=6)
+old2453_T <- clonoype.def(old5922453_TCR, whichColumn=6)
+young1925_T <- clonoype.def(young5921925_TCR, whichColumn=6)
+young2423_T <- clonoype.def(young5922423_TCR, whichColumn=6)
+young2425_T <- clonoype.def(young5922425_TCR, whichColumn=6)
+young2427_T <- clonoype.def(young5922427_TCR, whichColumn=6)
+
+old1798_T_exp <- expand.barc(old1798_T)
+old1840_T_exp <- expand.barc(old1840_T)
+old2051_T_exp <- expand.barc(old2051_T)
+old2453_T_exp <- expand.barc(old2453_T)
+young1925_T_exp <- expand.barc(young1925_T)
+young2423_T_exp <- expand.barc(young2423_T)
+young2425_T_exp <- expand.barc(young2425_T)
+young2427_T_exp <- expand.barc(young2427_T)
+
+old1798_B_exp <- expand.barc(old1798_B)
+old1840_B_exp <- expand.barc(old1840_B)
+old2051_B_exp <- expand.barc(old2051_B)
+old2453_B_exp <- expand.barc(old2453_B)
+young1925_B_exp <- expand.barc(young1925_B)
+young2423_B_exp <- expand.barc(young2423_B)
+young2425_B_exp <- expand.barc(young2425_B)
+young2427_B_exp <- expand.barc(young2427_B)
+
+tcr_all.list <- list(old1798_T,
+old1840_T,
+old2051_T,
+old2453_T,
+young1925_T,
+young2423_T,
+young2425_T,
+young2427_T)
+
+bcr_all.list <- list(old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+
+tcr_all.final <- rbind(old1798_T,
+old1840_T,
+old2051_T,
+old2453_T,
+young1925_T,
+young2423_T,
+young2425_T,
+young2427_T)
+
+bcr_all.final <- rbind(old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+```
+
+
+3. Merge VDJ info as GEX metadata
+- 1. Expansion level:
+```{r}
+un_exp <- c(old1798_T_exp[[3]],
+old1840_T_exp[[3]],
+old2051_T_exp[[3]],
+old2453_T_exp[[3]],
+young1925_T_exp[[3]],
+young2423_T_exp[[3]],
+young2425_T_exp[[3]],
+young2427_T_exp[[3]])
+
+low_exp <- c(old1798_B_exp[[2]],
+old1840_B_exp[[2]],
+old2051_B_exp[[2]],
+old2453_B_exp[[2]],
+young1925_B_exp[[2]],
+young2423_B_exp[[2]],
+young2425_B_exp[[2]],
+young2427_B_exp[[2]])
+
+
+rownames(bcell.nocd3nopc@meta.data)
+
+explevel <- rep(NA, length(rownames(bcell.nocd3nopc@meta.data)))
+explevel[rownames(bcell.nocd3nopc@meta.data) %in% high_exp] <- "high_exp"
+explevel[rownames(bcell.nocd3nopc@meta.data) %in% low_exp] <- "low_exp"
+explevel[rownames(bcell.nocd3nopc@meta.data) %in% un_exp] <- "un_exp"
+table(explevel)
+bcell.nocd3nopc <- AddMetaData(bcell.nocd3nopc, metadata = explevel, col.name = "Explevel")
+```
+
+- 2. Isotype:
+```{r}
+isotype_patient.list <- list(
+old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+# Prepare to add to patient GEX metadata:
+datalist = list()
+for(i in 1:8){
+  object.filt <- isotype_patient.list[[i]][isotype_patient.list[[i]]$same_clone,]
+  object.filt.iso <- as.data.frame(object.filt[!is.na(object.filt$c_gene),c("c_gene")])
+  rownames(object.filt.iso) <- as.data.frame(object.filt[!is.na(object.filt$c_gene),c("barcode")])[,1]
+  datalist[[i]] <- object.filt.iso
+}
+coercdata <- do.call(rbind, datalist)
+coercdata$c_gene
+coercdata$c_gene[grep('^IGHA', coercdata$c_gene)] <- "IGHA"
+coercdata$c_gene[grep('^IGHG', coercdata$c_gene)] <- "IGHG"
+
+# Add this to metadata to patient GEX:
+bcell.nocd3nopc <- AddMetaData(bcell.nocd3nopc, metadata = coercdata, col.name = "isotype")
+bcell.nocd3nopc@meta.data$isotype[bcell.nocd3nopc@meta.data$isotype == "None"] <- NA
+table(bcell.nocd3nopc@meta.data$isotype)
+```
+
+-3. Variabel usage of CD4 and CD8 TCR sequences:
+```{r}
+cd4tcrs <- tcr_all.final[tcr_all.final$barcode %in% rownames(covid.all.TCRonly_nodoub_sct.cd8@meta.data),]
+cd8tcrs <- tcr_all.final[tcr_all.final$barcode %in% rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data),]
+
+
+cd4tcrs$barcode
+
+
+table(cd8tcrs[,c(1,3)])/max(table(cd8tcrs[,c(1,3)]))
+# Without all possible gene names - no uniform heatmap axes:
+table(cd4tcrs[,c(1,3)]) %>%
+  as.data.frame() %>% 
+  ggplot() +
+  aes(x=v_gene_a, y=v_gene_b, fill=Freq) %>%
+  geom_tile(colour="white",size=0.15) +
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("VH-Vl gene usage young2427_B")
+####
+```
+
+
+4. GEX analysis
+- 1. Add cell state information to GEX metadata:
+```{r}
+# Rename clusters to make cell phenotype plots:
+Ball <- c("FCER2", "CD27","TNFRSF13B","CD83", "FCRL3", "CD1C")
+T8all <- c('SELL', 'TCF7', 'IL7R', 'CD40LG', 'GZMB', 'NKG7', "PDCD1", "LAG3")
+T4all <- c('SELL', 'LEF1', 'S100A4', 'CCL5', 'GZMK', 'FOXP3')
+
+t8naive <- c(0,3,5)
+t8mem <- c(2,4)
+t8eff <- c(1,6)
+t4naive <- c(0,2,7)
+t4mem <- c(1,3,5)
+t4eff <- c(4)
+t4reg <- c(6)
+bnaive <- c(3)
+bmem <- c(1,2,8)
+bact <- c(0,4,7)
+bmz <- c(5,6)
+
+seurat_object <- bcell.nocd3nopc
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+
+state <- rep(NA, length(seurat_object@meta.data$SCT_snn_res.0.5))
+state[seurat_object@meta.data$SCT_snn_res.0.5 %in% t8naive] <- "Naive"
+state[seurat_object@meta.data$SCT_snn_res.0.5 %in% t8mem] <- "Memory"
+state[seurat_object@meta.data$SCT_snn_res.0.5 %in% t8eff] <- "Effector"
+#state[seurat_object@meta.data$SCT_snn_res.0.5 %in% t4reg] <- "Regulatory"
+
+seurat_object <- AddMetaData(seurat_object, metadata = state, col.name = "State")
+Idents(seurat_object) <- "State"
+# Cell state colors:
+# Naive - blue = #6D94CD
+# Memory - green = #7CAE2A
+# Activated - red = #EE756E
+# Treg - purple = #A080B9
+# MZ -teal = #2AB6BE
+DimPlot(seurat_object, reduction = "umap", pt.size = .1, label = F, label.size = 5,
+        group.by = "State", cols = c("#EE756E", "#7CAE2A", "#6D94CD"))
+covid.all.TCRonly_nodoub_sct.cd8 <- seurat_object
+
+```
+
+- 2. T and B cell marker analysis:
+```{r}
+
+sum(rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data) %in% tcr_all.final$barcode)
+sum(tcr_all.final$barcode %in% rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data))
+
+seurat_object <- bcell.nocd3nopc
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+DimPlot(seurat_object, reduction = "umap", pt.size = .4, group.by = "State")
+
+Ball <- c("FCER2", "CD27","TNFRSF13B","CD83", "FCRL3", "CD1C")
+T8all <- c('SELL', 'TCF7', 'IL7R', 'CD40LG', 'GZMB', 'NKG7', "PDCD1", "LAG3")
+T4all <- c('SELL', 'LEF1', 'S100A4', 'CCL5', 'GZMK', 'FOXP3')
+VlnPlot(seurat_object, features = c("CD44", "IL7R"))
+
+Idents(bcell.nocd3nopc) <- "State"
+eff8 <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = WhichCells(covid.all.TCRonly_nodoub_sct.cd8, idents = "Effector"))
+Idents(eff8) <- "orig.ident"
+FeaturePlot(seurat_object, features = c("NFATC1"), split.by = 'State')#, order = T, pt.size = 1)
+#FeaturePlot(covid.all.BCRonly_nodoub, features = c("VIM","PPIB", "HSP90B1","CALR","DUSP1", "HLA-DRA", "CD74", "HLA-DQA1", "HLA-DRB1"))
+DimPlot(seurat_object, group.by = "seurat_clusters", label = T)
+FindAllMarkers(seurat_object)
+
+exhausted <- c('HAVCR2', 'LAG3', 'ITGAE', 'PDCD1', 'CTLA4')
+predys <- c('CXCL13', 'GZMK')
+naive <- c('CCR7', 'TCF7', 'SELL', 'LEF1')
+memory <- c('IL7R', 'CCR7', 'TCF7')
+cytotoxic <- c('PRF1', 'GZMB', 'NKG7', 'KLRG1')
+prolif <- c("STMN1", "MKI67")
+# Exhaustion TF's: "PRDM1", "MAF"
+#Heatmap:
+Idents(seurat_object) <- "seurat_clusters"
+seurat_object.marker <- FindAllMarkers(seurat_object, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+top10 <- seurat_object.marker %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(seurat_object, features = top10$gene) + NoLegend()
+
+# Barplot of patient distribution of different cell states:
+datalist = list()
+patients <- c('old1798', 'old1840', 'old2051', 'old2453', 'young1925', 'young2423', 'young2425', 'young2427')
+for(i in 1:8){
+  rowlocation <-  seurat_object@meta.data$orig.ident == patients[i]
+  state_count <- table(seurat_object@meta.data$State[rowlocation])#/sum(rowlocation)
+  patient <- rep(patients[i],4)
+  datalist[[i]] <- data.frame(patient, state_count)
+  names(datalist[[i]]) <-c("Patient", "CellTypes", "Frequency")
+}
+coercdata <- do.call(rbind, datalist)
+ggplot(coercdata, aes(fill=CellTypes, y=Frequency, x=Patient)) + 
+    geom_bar(position="fill", stat="identity") + ggtitle("B Cell Type Ratio per Patient")
+Idents(covid.all.TCRonly_nodoub_sct.cd8) <- "State"
+effsubset <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = WhichCells(covid.all.TCRonly_nodoub_sct.cd8, idents = "Effector"))
+memsubset <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = WhichCells(covid.all.TCRonly_nodoub_sct.cd8, idents = "Memory"))
+effsubset.count <- table(effsubset@meta.data$orig.ident)
+memsubset.count <- table(memsubset@meta.data$orig.ident)
+cd8patient <- table(covid.all.TCRonly_nodoub_sct.cd8@meta.data$orig.ident)
+effsubset.count/cd8patient
+memsubset.count/cd8patient
+
+# Barplot of patient distribution of the main cell states:
+cd4patient <- table(covid.all.TCRonly_nodoub_sct.cd4@meta.data$orig.ident)
+cd8patient <- table(covid.all.TCRonly_nodoub_sct.cd8@meta.data$orig.ident)
+bpatient <- table(bcell.nocd3nopc@meta.data$orig.ident)
+
+Patient <- c(rep(patients,2))
+CellType <- c(rep("CD8 T cell",8), rep("CD4 T cell",8))
+Frequency <- c(cd8patient, cd4patient)
+df <- data.frame(Patient, CellType, Frequency)
+df[order(df$Patient),]
+ggplot(df[order(df$Patient),], aes(fill=CellType, y=Frequency, x=Patient)) + 
+    geom_bar(position="fill", stat="identity") + ggtitle("Ratio of CD4 to CD8 T cells per Patient")
+
+cd4patient/(cd8patient+cd4patient)
+
+seurat_object <- bcell.nocd3nopc
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+
+datalist = list()
+patients <- c('old1798', 'old1840', 'old2051', 'old2453', 'young1925', 'young2423', 'young2425', 'young2427')
+for (i in 1:8){
+  datalist[[i]] <- table(seurat_object@meta.data$State[seurat_object@meta.data$orig.ident == patients[i]])/sum(seurat_object@meta.data$orig.ident == patients[i])
+}
+
+table(seurat_object@meta.data$State)/length(seurat_object@meta.data$State)
+```
+
+- 3. Effector CD8 T cell sub cell states and interpatient differences:
+```{r}
+Idents(covid.all.TCRonly_nodoub_sct.cd8) <- "seurat_clusters"
+FeaturePlot(covid.all.TCRonly_nodoub_sct.cd8, features = c('LAG3','GZMK', "PRF1", "GZMB","CD44", "IL7R"))#, split.by = "orig.ident")
+DimPlot(covid.all.TCRonly_nodoub_sct.cd8, group.by = "seurat_clusters", label = T)
+# Effector clusters are 1,2,6: some (in cluster 2) are both effector and memory T cell state-like
+cd8eff <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = WhichCells(covid.all.TCRonly_nodoub_sct.cd8, idents = c(1,2,6)))
+
+cd8eff <- RunUMAP(object = cd8eff, assay = "SCT", reduction = "harmony", dims = 1:50)
+cd8eff <- FindNeighbors(object = cd8eff, assay = "SCT", reduction = "harmony", dims = 1:50)
+cd8eff <- FindClusters(object = cd8eff, resolution = .5)
+
+table(cd8eff@meta.data$orig.ident)
+
+DimPlot(cd8eff, group.by = "seurat_clusters", label = T, split.by = "orig.ident")
+FeaturePlot(cd8eff, features = c('LAG3','GZMK', "PRF1", "GZMB","CD44", "IL7R"), split.by = "orig.ident")
+
+Idents(cd8eff) <- "seurat_clusters"
+seurat_object.marker <- FindAllMarkers(cd8eff, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+top10 <- seurat_object.marker %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(cd8eff, features = top10$gene, group.by = "orig.ident")
+
+
+
+Idents(cd8eff) <- "orig.ident"
+markergenes <- FindMarkers(cd8eff, ident.1 = c('old1798', 'old1840', 'old2051', 'old2453'), ident.2 =  c('young1925', 'young2423', 'young2425', 'young2427'))
+
+Idents(covid.all.TCRonly_nodoub_sct.cd8) <- "State"
+cd8eff <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = WhichCells(covid.all.TCRonly_nodoub_sct.cd8, idents = "Effector"))
+FindMarkers(covid.all.TCRonly_nodoub_sct.cd8, ident.1 = "Effector", ident.2 = "Naive")
+DoHeatmap(cd8eff, features = c("NFKBIA", "HLA-DQB1", "GZMA", "NKG7", "GZMH", "TOB1", "PLEK", "PRF1", "GZMB", "LGALS1", "CST7", "LTB", "GNLY", "TNF"), group.by = "orig.ident")
+VlnPlot(cd8eff, features = c('ISG15', 'IFI44', 'IFI27', 'CXCL10', 'RSAD2', 'IFIT1', 'IFI44L', 'CCL8', 'XAF1', 'GBP1', 'IRF7', 'CEACAM1'), group.by = "orig.ident")
+
+
+
+# Heatmap of age and expansion markers for all patients in the CD8eff subset:
+seurat_object.marker <- FindMarkers(cd8eff, 
+                                    ident.1 = c('old1798', 'old1840', 'old2051', 'old2453'), 
+                                    ident.2 =  c('young1925', 'young2423', 'young2425', 'young2427'),
+                                    only.pos = F, min.pct = 0.3, logfc.threshold = 0.3, max.cells.per.ident	
+= 500)
+features.sick <- rownames(seurat_object.marker[order(-seurat_object.marker$avg_logFC),])
+#top10 <- seurat_object.marker %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+features.sick.filt <- features.sick[c(-grep(features.sick, pattern = "^M"))]
+
+p1 <- RidgePlot(cd8eff, features = features.sick.filt, log=T)
+features = features.sick.filt
+datalist <- list()
+for(i in 1:length(features)){
+  datalist[[i]] <- aggregate(p1[[i]]$data[,1], by=list(p1[[i]]$data[,2]), FUN=mean)[,2]
+}
+coercdata <- do.call(rbind, datalist)
+colnames(coercdata) <- names(table(p1[[1]]$data[,2]))[table(p1[[1]]$data[,2]) >0]
+rownames(coercdata) <- features
+
+coercdata <- coercdata[,c(1,2,4,8,3,5,6,7)]
+
+expmarkers <- coercdata[rownames(coercdata) %in% c('GZMB', 'GZMH', 'LGALS1', 'PRF1', 'ADGRG1', 'FGFBP2'),]
+agemarkers <- coercdata[!rownames(coercdata) %in% c('GZMB', 'GZMH', 'LGALS1', 'PRF1', 'ADGRG1', 'FGFBP2'),]
+expmarkers <- expmarkers[,c(2,8,3,7,5,6,1,4)]
+pheatmap(expmarkers, scale = "row",main = "DGE by clonal expansion level",
+         color = viridis(100),
+         cluster_rows = T,
+         cluster_cols =F)
+
+
+
+
+
+
+
+
+
+
+
+# Gene ontology score
+FeaturePlot(cd8eff, features = c("GZMB", "CD8A"))
+
+Idents(cd8eff) <- "orig.ident"
+cd8eff.markers <- FindMarkers(cd8eff, ident.1 = c('old1798', 'old1840', 'old2051', 'old2453'), ident.2 =  c('young1925', 'young2423', 'young2425', 'young2427'))
+cd8eff.markers <- cd8eff.markers[order(cd8eff.markers$avg_logFC),]
+cd8eff.markers$group <- c(rep("young", 6), rep("old" ,23))
+dplyr::count(cd8eff.markers, group)
+m_df<- msigdbr(species = "Homo sapiens", category = "C7")
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+names(fgsea_sets)[grep("CD8" ,names(fgsea_sets))]
+
+cd8eff.markers$gene <- rownames(cd8eff.markers)
+cd8eff.markers %>%
+  arrange(desc(avg_logFC), desc(pct.1)) %>%
+  head(n = 10)
+
+o.genes<- cd8eff.markers %>%
+  arrange(desc(pct.1)) %>% 
+  dplyr::select(gene, pct.1)
+ranks<- deframe(o.genes)
+
+fgseaRes<- fgsea(fgsea_sets, stats = ranks, nperm = 1000)
+
+fgseaResTidy <- fgseaRes %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+
+fgseaResTidy %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) %>% 
+  head()
+
+# only plot the top 20 pathways
+ggplot(fgseaResTidy %>% filter(pval < 0.05) %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill= NES < 7.5)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+
+plotEnrichment(fgsea_sets[["GSE24081_CONTROLLER_VS_PROGRESSOR_HIV_SPECIFIC_CD8_TCELL_UP"]],
+               ranks) + labs(title="GSE30962_ACUTE_VS_CHRONIC_LCMV_PRIMARY_INF_CD8_TCELL_UP")
+
+#"GSE24081_CONTROLLER_VS_PROGRESSOR_HIV_SPECIFIC_CD8_TCELL_DN"          
+#"GSE24081_CONTROLLER_VS_PROGRESSOR_HIV_SPECIFIC_CD8_TCELL_UP"  
+#[219] "GSE25846_IL10_POS_VS_NEG_CD8_TCELL_DAY7_POST_CORONAVIRUS_BRAIN_DN"        
+#[220] "GSE25846_IL10_POS_VS_NEG_CD8_TCELL_DAY7_POST_CORONAVIRUS_BRAIN_UP" 
+#[315] "GSE30962_ACUTE_VS_CHRONIC_LCMV_PRIMARY_INF_CD8_TCELL_DN"                  
+#[316] "GSE30962_ACUTE_VS_CHRONIC_LCMV_PRIMARY_INF_CD8_TCELL_UP"                  
+#[317] "GSE30962_ACUTE_VS_CHRONIC_LCMV_SECONDARY_INF_CD8_TCELL_DN"                
+#[318] "GSE30962_ACUTE_VS_CHRONIC_LCMV_SECONDARY_INF_CD8_TCELL_UP"                
+#[319] "GSE30962_PRIMARY_VS_SECONDARY_ACUTE_LCMV_INF_CD8_TCELL_DN"                
+#[320] "GSE30962_PRIMARY_VS_SECONDARY_ACUTE_LCMV_INF_CD8_TCELL_UP"                
+#[321] "GSE30962_PRIMARY_VS_SECONDARY_CHRONIC_LCMV_INF_CD8_TCELL_DN"              
+#[322] "GSE30962_PRIMARY_VS_SECONDARY_CHRONIC_LCMV_INF_CD8_TCELL_UP"    
+
+
+```
+
+- 4. SingleR celltype comparison:
+```{r}
+library(SingleR)
+library(celldex)
+hpca.se <- HumanPrimaryCellAtlasData()
+hpca.se
+rownames(bcell.nocd3nopc@assays$SCT)
+covid.all.TCRonly_nodoub_sct.cd8
+covid.all.TCRonly_nodoub_sct.cd4
+
+pred.hesc <- SingleR(test = bcell.nocd3nopc@assays$SCT, ref = hpca.se,
+    labels = hpca.se$label.main)
+```
+
+
+5. VDJ analysis
+- 1. Clonal expansion in Barplot:
+```{r}
+# Clonotype rate per patient in barplot:
+datalist = list()
+patients <- c('old1798', 'old1840', 'old2051', 'old2453', 'young1925', 'young2423', 'young2425', 'young2427')
+for(i in 1:8){
+  bcr <-  bcr_all.list[[i]]
+  clono_count <- sort(table(bcr$clonotype_new[bcr$clonotype_size > 1]), decreasing = T)#/sum(rowlocation)
+  patient <- rep(patients[i],length(clono_count))
+  print(paste0("patient",i,": ",length(patient)))
+  patientdf <- data.frame(patient, clono_count)
+  patientdf$Clone <- seq(1,nrow(patientdf))
+  datalist[[i]] <- patientdf[order(patientdf[,3], decreasing = T),]
+  #datalist[[i]] <- data.frame(patient, clono_count)
+  names(datalist[[i]]) <-c("Patient", "Clonotype", "Frequency","Clone")
+}
+coercdata <- do.call(rbind, datalist)
+coercdata[coercdata$Frequency>=5,]-> subset.expanded
+filter(subset.expanded, Patient == "young1925") %>% pull(Frequency) %>% sum
+
+ggplot(coercdata[order(coercdata$Clone, decreasing = T),], aes(Patient, Frequency, fill = Clone)) +
+    geom_bar(position = position_fill(reverse = F),stat = "identity", col = "black", show.legend = F) + ggtitle("Clonal expansion of T Cells")
+ggplot(coercdata[order(coercdata$Clone, decreasing = T),], aes(Patient, Frequency, fill = Clone)) +
+    geom_bar(stat = "identity", col = "black", show.legend = F) + ggtitle("Clonal expansion of T Cells")
+
+
+p1 <- ggplot(coercdata[order(coercdata$Clone, decreasing = T),], aes(Patient, Frequency, fill = Clone)) +
+    geom_bar(stat = "identity", col = "black", show.legend = F)
+p1
+p1 + scale_y_continuous(limits=c(0, 600), n.breaks = 10)
+```
+
+- 2. SHM rate calculation:
+```{r}
+bcr_all_patients <- list(old5921798_BCR,
+old5921840_BCR,
+old5922051_BCR,
+old5922453_BCR,
+young5921925_BCR,
+young5922423_BCR,
+young5922425_BCR,
+young5922427_BCR)
+bcr_patient_clones <- list(old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+b_exp.list <- list(
+old1798_B_exp,
+old1840_B_exp,
+old2051_B_exp,
+old2453_B_exp,
+young1925_B_exp,
+young2423_B_exp,
+young2425_B_exp,
+young2427_B_exp)
+
+##########
+###25.08.2020
+##########
+###Final figure for paper
+# Generate SHM dataframe with barcodes as rownames:
+patients <- c(5921798,5921840,5922051,5922453,5921925,5922423,5922425,5922427)
+ig_prefix_patient <- c("old1798_","old1840_","old2051_","old2453_","young1925_","young2423_","young2425_","young2427_")
+i <- 1
+shm.1798 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.1798$patient <- rep("old1798",nrow(shm.1798))
+shm.1798.clonal <- shm.1798[!duplicated(shm.1798$clonotype_new),c(6,7,8,9)]
+
+
+i <- 2
+shm.1840 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.1840$patient <- rep("old1840",nrow(shm.1840))
+shm.1840.clonal <- shm.1840[!duplicated(shm.1840$clonotype_new),c(6,7,8,9)]
+
+i <- 3
+shm.2051 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.2051$patient <- rep("old2051",nrow(shm.2051))
+shm.2051.clonal <- shm.2051[!duplicated(shm.2051$clonotype_new),c(6,7,8,9)]
+
+i <- 4
+shm.2453 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.2453$patient <- rep("old2453",nrow(shm.2453))
+shm.2453.clonal <- shm.2453[!duplicated(shm.2453$clonotype_new),c(6,7,8,9)]
+
+i <- 5
+shm.1925 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.1925$patient <- rep("young1925",nrow(shm.1925))
+shm.1925.clonal <- shm.1925[!duplicated(shm.1925$clonotype_new),c(6,7,8,9)]
+
+i <- 6
+shm.2423 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.2423$patient <- rep("young2423",nrow(shm.2423))
+shm.2423.clonal <- shm.2423[!duplicated(shm.2423$clonotype_new),c(6,7,8,9)]
+
+i <- 7
+shm.2425 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.2425$patient <- rep("young2425",nrow(shm.2425))
+shm.2425.clonal <- shm.2425[!duplicated(shm.2425$clonotype_new),c(6,7,8,9)]
+
+i <- 8
+shm.2427 <- makeSHMdf(bcr_loc = patients[i], 
+          prefix.pat = ig_prefix_patient[i], 
+          bcr_VDJ = bcr_patient_clones[[i]])
+shm.2427$patient <- rep("young2427",nrow(shm.2427))
+shm.2427.clonal <- shm.2427[!duplicated(shm.2427$clonotype_new),c(6,7,8,9)]
+
+shm.all <- rbind(shm.1798,
+      shm.1840,
+      shm.2051,
+      shm.2453,
+      shm.1925,
+      shm.2423,
+      shm.2425,
+      shm.2427)
+shm.alllist <- list(shm.1798,
+      shm.1840,
+      shm.2051,
+      shm.2453,
+      shm.1925,
+      shm.2423,
+      shm.2425,
+      shm.2427)
+
+clonal.shm.all <- rbind(shm.1798.clonal,
+      shm.1840.clonal,
+      shm.2051.clonal,
+      shm.2453.clonal,
+      shm.1925.clonal,
+      shm.2423.clonal,
+      shm.2425.clonal,
+      shm.2427.clonal)
+
+shm.all$SHM <- shm.all$SHM/2
+clonal.shm.all$clonal_SHM <- clonal.shm.all$clonal_SHM/2
+```
+
+- 3. SHM rate boxplots:
+```{r}
+#Idents(bcell.nocd3nopc) <- "Explevel"
+#shm.high_exp <- shm.all[rownames(shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "high_exp"),]
+#shm.high_exp$Exp <- "3_high_exp"
+#shm.low_exp <- shm.all[rownames(shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "low_exp"),]
+#shm.low_exp$Exp <- "2_low_exp"
+#shm.un_exp <- shm.all[rownames(shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "un_exp"),]
+#shm.un_exp$Exp <- "1_un_exp"
+###
+# By clonal expansion level: (1=hexp, 2=exp, 3=unexp)
+datalist.final =NULL
+for (i in 1:8){
+  datalist <- b_exp.list[[i]][[3]]
+  datalist.final <- c(datalist.final,datalist)
+}
+
+datalist.final.hexp <- datalist.final
+datalist.final.exp <- datalist.final
+datalist.final.unexp <- datalist.final
+
+clonal.shm.all_VH <- clonal.shm.all[,c(1,4)]
+clonal.shm.all_VL <- clonal.shm.all[,c(2,4)]
+clonal.shm.all_VHVL <- clonal.shm.all[,c(3,4)]
+
+clonal.shm <- clonal.shm.all_VHVL
+shm.high_exp <- clonal.shm[rownames(clonal.shm) %in% datalist.final.hexp,]
+shm.high_exp$Exp <- "3_high_exp"
+shm.low_exp <- clonal.shm[rownames(clonal.shm) %in% datalist.final.exp,]
+shm.low_exp$Exp <- "2_low_exp"
+shm.un_exp <- clonal.shm[rownames(clonal.shm) %in% datalist.final.unexp,]
+shm.un_exp$Exp <- "1_un_exp"
+###
+### Current version as of 07012021:
+allshm.exp <- rbind(shm.un_exp, shm.low_exp, shm.high_exp)
+shm.rate <- allshm.exp
+shm.rate$clonal_SHM <- (1-shm.rate$clonal_SHM_VHVL)*100
+shm.rate$Age[shm.rate$patient %in% c("old1798", "old1840", "old2051", "old2453")] <- "Old"
+shm.rate$Age[!shm.rate$patient %in% c("old1798", "old1840", "old2051", "old2453")] <- "Young"
+
+p <- ggplot(shm.rate, aes(x=patient, y=clonal_SHM, fill = Exp))
+p + geom_boxplot(outlier.alpha = .075) +
+  #geom_jitter(width = 0.1, alpha = 0.4)+
+  #stat_summary(fun=mean, geom="point", shape=5, size=3)+
+  ggtitle("VH-SHM rate by patient and expansion level")
+
+
+shm.rate.hexp <- shm.rate[shm.rate$Exp == "3_high_exp",]
+write.csv(shm.rate.hexp, file = "/Users/fbieberich/Downloads/shm_rate_VHVL_highexp.csv")
+for(i in unique(shm.rate.hexp$patient)){
+  print(
+    paste(i,":",median(shm.rate.hexp$clonal_SHM[shm.rate.hexp$patient == i])))
+}
+
+##########################################
+ggplot(allshm.exp, aes(x=patient, y=clonal_SHM_VHVL, fill = Exp)) + 
+  geom_boxplot() + ggtitle("clonal_SHM by clonal B cell expansion per patient")
+p <- ggplot(shm.rate[shm.rate$Exp == "3_high_exp",], aes(x=Age, y=clonal_SHM, fill = Age))
+
+p <- ggplot(shm.rate[shm.rate$Exp == "3_high_exp",], aes(x=Age, y=clonal_SHM, fill = Age))
+p + geom_boxplot(outlier.alpha = .075) + 
+  geom_jitter(width = 0.1, alpha = 0.4)+
+  stat_summary(fun=mean, geom="point", shape=5, size=3)+
+  ggtitle("SHM rate of highly expanded clones by age group")
+
+p+  geom_boxplot(alpha=0.5, position="dodge",binwidth = 1,fatten = 2)+
+  stat_summary(fun=mean, geom="point", shape=5, size=3)
+
+
+# shm as mutation amount -> high=more mutations:
+shm.rate <- allshm.exp
+shm.rate$clonal_SHM_VH <- (1-shm.rate$clonal_SHM_VH)*100
+ggplot(shm.rate[shm.rate$Exp == "3_high_exp",], aes(y=clonal_SHM_VH, x=patient)) +
+  geom_dotplot(binaxis='y', stackdir='center', binwidth = .4, stackratio = 1, dotsize = 1)+
+  #geom_boxplot(notch = TRUE) +
+  stat_summary(fun.data="mean_sdl", fun.args = list(mult=1), 
+                 geom="crossbar", width=0.5)
+##########################################
+# By celltype:
+shm.memBcells <- clonal.shm.all[rownames(clonal.shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "Memory"),]
+shm.memBcells$Celltype <- "3_Memory"
+shm.naiveBcells <- clonal.shm.all[rownames(clonal.shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "Naive"),]
+shm.naiveBcells$Celltype <- "1_Naive"
+shm.actBcells <- clonal.shm.all[rownames(clonal.shm.all) %in% WhichCells(bcell.nocd3nopc, idents = "Activated"),]
+shm.actBcells$Celltype <- "2_Activated"
+
+allshm.subs <- rbind(shm.naiveBcells, shm.actBcells, shm.memBcells)
+
+Idents(bcell.nocd3nopc) <- "State"
+DimPlot(bcell.nocd3nopc, label = T)
+
+ggplot(shm.memBcells, aes(x=patient, y=SHM, fill = Celltype)) + 
+  geom_boxplot() + ggtitle("SHM memory B cells per patient")
+
+
+allshm.subs$clonal_SHM <- 1-allshm.subs$clonal_SHM
+p <- ggplot(allshm.subs, aes(x=patient, y=clonal_SHM, fill = Celltype))
+p + geom_boxplot(outlier.alpha = .075)# + geom_jitter(width = 0.1, alpha = 0.1) + stat_boxplot(geom = 'errorbar')
+
+
+#write.csv(shm.rate[shm.rate$Exp == "3_high_exp",c(1,4)],file = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/R_scripts/shm_high_exp_age.csv")
+```
+
+- 4. Isotype rates and distribution:
+```{r}
+isotype_patient.list <- list(
+old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+b_exp.list <- list(
+old1798_B_exp,
+old1840_B_exp,
+old2051_B_exp,
+old2453_B_exp,
+young1925_B_exp,
+young2423_B_exp,
+young2425_B_exp,
+young2427_B_exp)
+
+patients <- c('old1798', 'old1840', 'old2051', 'old2453', 'young1925', 'young2423', 'young2425', 'young2427')
+Idents(bcell.nocd3nopc) <- "State"
+datalist = list()
+for(i in 1:8){
+  # Optional: memory B cells only:
+  #isotype_patient <- isotype_patient.list[[i]][isotype_patient.list[[i]]$barcode %in% rownames(bcell.mem@meta.data),]
+  #isotype_patient <- isotype_patient.list[[i]][isotype_patient.list[[i]]$barcode %in% WhichCells(bcell.nocd3nopc, idents = "Naive"),]#naive
+  #isotype_patient <- isotype_patient.list[[i]][isotype_patient.list[[i]]$barcode %in% WhichCells(bcell.nocd3nopc, idents = "Activated"),]
+  isotype_patient <- isotype_patient.list[[i]][isotype_patient.list[[i]]$barcode %in% WhichCells(bcell.nocd3nopc, idents = "Memory"),]
+  #isotype_patient <- isotype_patient.list[[i]]
+  # Optional: different clonally expanded cells only:
+  #isotype_patient <- isotype_patient[isotype_patient$barcode %in% WhichCells(covid.all.BCRonly_nodoub_sct, idents = "un_exp"),]
+  # Get expansion from VDJ data:
+  #isotype_patient <- isotype_patient.list[[i]]
+  #isotype_patient <- isotype_patient[isotype_patient$barcode %in% b_exp.list[[i]][[1]],]
+  print(paste("Patient",i, nrow(isotype_patient)))
+  isotype.table <- table(isotype_patient$c_gene)/length(isotype_patient$c_gene)
+  igha <- sum(isotype.table[grep('^IGHA', names(isotype.table))])
+  ighg <- sum(isotype.table[grep('^IGHG', names(isotype.table))])
+  ighm <- sum(isotype.table[grep('^IGHM', names(isotype.table))])
+  ighd <- sum(isotype.table[grep('^IGHD', names(isotype.table))])
+  patient <- rep(patients[i],4)
+  isotype <- c("IGHM", "IGHG", "IGHA", "IGHD")
+  frequency <- c(ighm, ighg, igha, ighd)
+  datalist[[i]] <- data.frame(patient, isotype, frequency)
+}
+coercdata <- do.call(rbind, datalist)
+
+m <- matrix(nrow=3, ncol=8)
+for(i in 1:8){
+  for(a in 1:3){
+    m[a,i] <- length(b_exp.list[[i]][[a]])
+  }
+}
+m <- as.data.frame(m)
+rownames(m) <- c("high exp", "exp", "unexp")
+colnames(m) <- patients
+
+
+#coercdata <- drop_na(coercdata)
+
+ggplot(coercdata, aes(fill=isotype, y=frequency, x=patient)) + 
+    geom_bar(position="fill", stat="identity") + ggtitle("Highly expanded")
+
+# Visualise where isotypes reside in umap:
+Idents(bcell.nocd3nopc) <- "isotype"
+p1 <- DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .1, group.by = "isotype", label=F, 
+        cells.highlight= WhichCells(bcell.nocd3nopc, idents = c("IGHM")),
+        cols.highlight = c("purple"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "IGHM"), values = c("grey", "purple"))
+p2 <- DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .1, group.by = "isotype", label=F, 
+        cells.highlight= WhichCells(bcell.nocd3nopc, idents = c("IGHD")),
+        cols.highlight = c("darkgreen"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "IGHD"), values = c("grey", "darkgreen"))
+p3 <- DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .1, group.by = "isotype", label=F, 
+        cells.highlight= WhichCells(bcell.nocd3nopc, idents = c("IGHG")),
+        cols.highlight = c("red"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "IGHG"), values = c("grey", "red"))
+p4 <- DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .1, group.by = "isotype", label=F, 
+        cells.highlight= WhichCells(bcell.nocd3nopc, idents = c("IGHA")),
+        cols.highlight = c("darkblue"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "IGHA"), values = c("grey", "darkblue"))
+CombinePlots(list(p1,p2,p3,p4), ncol=4)
+```
+
+
+```{r}
+bcr_all.final.sub <- bcr_all.final[bcr_all.final$j_gene_b == "IGHJ6",]
+bcr_all.final.sub <- bcr_all.final.sub[bcr_all.final.sub$v_gene_b %in% c("IGHV3-53", "IGHV3-66"),]
+length(grep(x=bcr_all.final.sub$barcode,pattern = "1798"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "1840"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "2051"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "2453"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "1925"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "2423"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "2425"))
+length(grep(x=bcr_all.final.sub$barcode,pattern = "2427"))
+
+bcr_all.final.sub$cdr3_b[grep(x=bcr_all.final.sub$cdr3_b, pattern="MDVW")]
+```
+
+
+
+
+- 5. VaVb/VhVl pairing heatmap/circular map:
+```{r}
+tcr_all.list <- list(old1798_T,
+old1840_T,
+old2051_T,
+old2453_T,
+young1925_T,
+young2423_T,
+young2425_T,
+young2427_T)
+
+bcr_all.list <- list(old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+
+
+
+
+
+####
+# Heatmap:
+####
+# Select all V and J genes:
+tcr_vgenes <- names(table(bcr_all.final[,c(1)]))
+tcr_jgenes <- names(table(bcr_all.final[,c(3)]))
+# Plot V and J gene occurence separately:
+fill_tcr.ma <- matrix(0,nrow=length(tcr_vgenes), ncol = length(tcr_jgenes))
+colnames(fill_tcr.ma) <- tcr_jgenes
+rownames(fill_tcr.ma) <- tcr_vgenes
+#fill_tcr.ma <- fill_tcr.ma[,1:6]
+dim(fill_tcr.ma)
+dim(patientvj)
+# Outputs data frame that contains all v and j genes in a frequency way or normalized-by-column way:
+i=8
+patientvj <- as.matrix(as.data.frame.matrix(table(bcr_all.list[[i]][,c(1,3)])))
+patientvj <- patientvj/sum(rowSums(patientvj))
+patientvj <- patientvj*100
+patientvj <- (patientvj/max(patientvj))*100
+dimpre <- dim(patientvj)
+missing_rows <- rownames(fill_tcr.ma)[!rownames(fill_tcr.ma) %in% rownames(patientvj)]
+missing_cols <- colnames(fill_tcr.ma)[!colnames(fill_tcr.ma) %in% colnames(patientvj)]
+
+patientvj <- cbind(patientvj, matrix(data=0, ncol = length(missing_cols), nrow=nrow(patientvj)))
+patientvj <- rbind(patientvj, matrix(data=0, ncol = ncol(patientvj), nrow=length(missing_rows)))
+dimpost <- dim(patientvj)
+rownames(patientvj)[(dimpre[1]+1):dimpost[1]] <- missing_rows
+colnames(patientvj)[(dimpre[2]+1):dimpost[2]] <- missing_cols
+
+patientvj.full <- patientvj[order(rownames(patientvj)),]
+patientvj.full <- patientvj.full[,order(colnames(patientvj.full))]
+
+rownames(patientvj.full) == rownames(fill_tcr.ma)
+colnames(patientvj.full) == colnames(fill_tcr.ma)
+dim(patientvj.full)
+# Visualization of v-j-gene frequency as heatmap
+setNames(melt(as.matrix(patientvj.full)), c('v_gene', 'j_gene', 'freq')) %>%
+  ggplot() +
+  aes(x=j_gene, y=v_gene, fill=freq) %>%
+  geom_tile(colour="black",size=0.05) +
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Va-Vb gene usage young2427_T")
+
+# Without all possible gene names - no uniform heatmap axes:
+table(young2427_B[,c(1,3)]) %>%
+  as.data.frame() %>%
+  ggplot() +
+  aes(x=v_gene_a, y=v_gene_b, fill=Freq) %>%
+  geom_tile(colour="white",size=0.15) +
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("VH-Vl gene usage young2427_B")
+####
+
+####
+# Circular plots:
+####
+#chordDiagram(m, annotationTrack = "grid", grid.col = c(rownames(m)[1]="red", 
+#                                                       rownames(m)[2]="blue", 
+#                                                       rownames(m)[3]="green", 
+#                                                       rownames(m)[4]="purple", 
+#                                                       rownames(m)[5]="grey"))#, 
+    #preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(patientvj.full))))))
+#circos.track(track.index = 1, panel.fun = function(x, y) {
+#    circos.text(CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index, 
+#        facing = "clockwise", niceFacing = TRUE, adj = c(1, 0.4))
+#}, bg.border = NA)
+i=1
+top5_vv <- table(bcr_all.list[[i]][,c(1,3)]) %>%
+  as.data.frame()
+top5_vv <- top5_vv[order(top5_vv$Freq, decreasing = T),]
+top5_vv <- top5_vv[1:10,]
+
+m <- diag(top5_vv$Freq)
+rownames(m) <- as.character(top5_vv$v_gene_b)
+colnames(m) <- as.character(top5_vv$v_gene_a)
+length(union(rownames(m), colnames(m)))
+
+df = data.frame(from = rep(rownames(m), times = ncol(m)),
+    to = rep(colnames(m), each = nrow(m)),
+    value = as.vector(m),
+    stringsAsFactors = FALSE)
+
+library(circlize)
+
+#circos.par(start.degree = 85, clock.wise = F)
+col.m <- diag(seq(1,10))
+col.m <- rep(c("red", "darkred", "blue", "darkblue", "green", "darkgreen", "pink", "purple", "grey", "black"),10)
+#grid.col <-  c(brewer.pal(length(union(rownames(m), colnames(m))), "Set1"))
+grid.col <-  rev(colorRampPalette(brewer.pal(9, "Blues"))(length(union(rownames(m), colnames(m)))))
+
+dim(col.m) = dim(m)  # to make sure it is a matrix
+
+border_mat = matrix("black", nrow = nrow(m), ncol = ncol(m))
+
+
+adj_rownames <- gsub("IGHV", "", rownames(m))
+adj_colnames <- gsub("IGKV", "KV", colnames(m))
+adj_colnames <- gsub("IGLV", "LV", adj_colnames)
+
+
+rownames(m) = adj_rownames
+colnames(m) = adj_colnames
+
+chordDiagram(m, annotationTrack = c("grid"),big.gap = 20, 
+             grid.col = grid.col,
+             grid.border = "black",
+             col = col.m, 
+             link.border=border_mat, link.lwd = 1,
+             directional = 1, diffHeight = mm_h(3), scale=F)
+
+circos.track(track.index = 1, panel.fun = function(x, y) {
+    circos.text(CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index, 
+        facing = "downward", niceFacing = TRUE, adj = c(0,0))
+}, bg.border = NA)
+
+circos.clear()
+
+datalist <- list()
+patients <- c('old1798', 'old1840', 'old2051', 'old2453', 'young1925', 'young2423', 'young2425', 'young2427')
+for(i in 1:8){
+  top10_vv <- table(bcr_all.list[[i]][,c(1,3)]) %>%
+  as.data.frame()
+  top10_vv <- top10_vv[order(top10_vv$Freq, decreasing = T),]
+  top10_vv <- top10_vv[1:10,]
+  top10_vv$patient <- rep(patients[i],10)
+  datalist[[i]] <- top10_vv
+}
+vv_pairing.allpatients <- do.call(rbind, datalist)
+write.csv(vv_pairing.allpatients, "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/R_scripts/BCR_top10vv_pairing_allpat.csv")
+
+```
+
+- 6. CDR3H and L/ alpha and beta length analysis:
+```{r}
+tcr_all.list
+bcr_all.list
+
+tcr_all.list[[1]]$cdr3_b_length
+tcr_all.list[[1]]$cdr3_a_length
+
+df_final = NULL
+patients <- c("old1798","old1840","old2051","old2453","young1925","young2423","young2425","young2427")
+for(i in 1:8){
+  cdr3.patient <- bcr_all.list[[i]]$cdr3_b_length
+  df <- data.frame(patient = rep(patients[i], length(cdr3.patient)),
+                   cdr3_length = cdr3.patient)
+  df_final <- rbind(df_final, df)
+}
+
+ggplot(df_final, aes(x = cdr3_length, y = patient, colour = patient,
+                    fill = patient)) + 
+  geom_boxplot(alpha=0.5, position="dodge",binwidth = 1,fatten = 2)+
+  stat_summary(fun=mean, geom="point", shape=5, size=3)+ 
+  scale_x_continuous(breaks = seq(0, 30, by = 2))+ coord_flip()
+```
+
+- 7. Cell states among top10 clones:
+```{r}
+clon10 <- unique(bcr_all.list[[1]]$clonotype_new)[1:20]
+patients <- c("old1798","old1840","old2051","old2453","young1925","young2423","young2425","young2427")
+df_highclonal <- NULL
+memb.barcodes <- list()
+for(i in 1:8){
+  top10_clonotypes <- bcr_all.list[[i]]$barcode[bcr_all.list[[i]]$clonotype_new %in% clon10]
+  highclonal <- subset(bcell.nocd3nopc, cells = top10_clonotypes)
+  df <- as.data.frame(table(highclonal@meta.data$State))
+  df$Freq <- df$Freq/sum(df$Freq)
+  df$patient <- rep(patients[i], nrow(df))
+  df_highclonal <- rbind(df_highclonal, df)
+  # Select memory B cells only:
+  memb <- rownames(highclonal@meta.data)[highclonal@meta.data$State == "Memory"]
+  memb_df <- bcr_all.list[[i]][bcr_all.list[[i]]$barcode %in% memb,]
+  memb.barcodes[[i]] <- memb_df
+}
+
+clon10 <- unique(tcr_all.list[[1]]$clonotype_new)[1:20]
+df_highclonal <- NULL
+for(i in 1:8){
+  top10_clonotypes <- tcr_all.list[[i]]$barcode[tcr_all.list[[i]]$clonotype_new %in% clon10]
+  highclonal <- subset(covid.all.TCRonly_nodoub_sct.cd4, cells = top10_clonotypes)
+  df <- as.data.frame(table(highclonal@meta.data$State))
+  df$Freq <- df$Freq/sum(df$Freq)
+  df$patient <- rep(patients[i], nrow(df))
+  df_highclonal <- rbind(df_highclonal, df)
+}
+
+# CD8 to CD4 ratio in top10 clones:
+clon10 <- unique(tcr_all.list[[1]]$clonotype_new)[1:20]
+top10barcodes <- tcr_all.final$barcode[tcr_all.final$clonotype_new %in% clon10]
+top10cd4 <- subset(covid.all.TCRonly_nodoub_sct.cd4, cells = top10barcodes)
+top10cd8 <- subset(covid.all.TCRonly_nodoub_sct.cd8, cells = top10barcodes)
+top10sum <- nrow(top10cd4@meta.data)+nrow(top10cd8@meta.data)
+
+df <- data.frame(Freq = c(nrow(top10cd4@meta.data)/top10sum, nrow(top10cd8@meta.data)/top10sum))
+df$CellType <- c("CD4", "CD8")
+df$Top10 <- c("Top10", "Top10")
+  
+ggplot(df, aes(x= Top10, y=Freq, fill=CellType)) +
+    geom_bar(stat = "identity", col = "black", show.legend = T)
+
+
+# Cell state colors:
+# Naive - blue = #6D94CD
+# Memory - green = #7CAE2A
+# Activated - red = #EE756E
+# Treg - purple = #A080B9
+# MZ -teal = #2AB6BE
+ggplot(df_highclonal, aes(x=patient, y=Freq, fill = Var1)) +
+    geom_bar(stat = "identity", col = "black", show.legend = T)+
+    scale_fill_manual(values=c("#EE756E","#7CAE2A","#6D94CD", "#A080B9"))+
+    labs(title="CD4 T cell states of top 10 clones")
+```
+
+- 8. PC and BCR VDJ sequence integration:
+```{r}
+bcrs <- list(old5921798_BCR,old5921840_BCR,old5922051_BCR,old5922453_BCR,young5921925_BCR,young5922423_BCR,young5922425_BCR,young5922427_BCR)
+pcs <- list(old5921798_PC,old5921840_PC,old5922051_PC,old5922453_PC,young5921925_PC,young5922423_PC,young5922425_PC,young5922427_PC)
+
+bcr_pc.barcode <- list()
+i=1
+for (i in 1:8){
+  pc <- pcs[[i]]
+  pc$cell <- rep("PC", nrow(pc))
+  bcr <- bcrs[[i]]
+  bcr$cell <- rep("BCR", nrow(bcr))
+  bcr_pc.merge <- clonoype.def(rbind(bcr, pc))
+  
+  shared_clones <- unique(as.data.frame(bcr_pc.merge[bcr_pc.merge$cell =="BCR",c(16)])[,1])[
+  unique(as.data.frame(bcr_pc.merge[bcr_pc.merge$cell == "BCR",c(16)])[,1]) %in% unique(as.data.frame(bcr_pc.merge[bcr_pc.merge$cell =="PC",c(16)])[,1])]
+
+  bcr_pc.barcode[[i]] <- as.data.frame(bcr_pc.merge[bcr_pc.merge$clonotype_new %in% shared_clones,])$barcode
+
+}
+
+DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .5, group.by = "SCT_snn_res.0.3", label=F, split.by = "State", 
+        cells.highlight= bcr_pc.barcode, 
+        cols.highlight = rev(c("turquoise1", "turquoise2", "turquoise3", "turquoise4",
+                           "slateblue1", "slateblue2", "slateblue3", "slateblue4")), cols= "grey",
+        sizes.highlight = 1.2) + 
+  scale_color_manual(labels = c("rest", rev(c("Pt_1", "Pt_2", "Pt_3", "Pt_4", 
+                                "Pt_5", "Pt_6", "Pt_7", "Pt_8"))), 
+                     values = c("grey", rev(c("turquoise1", "turquoise2", "turquoise3", "turquoise4",
+                           "slateblue1", "slateblue2", "slateblue3", "slateblue4"))))
+```
+Old: #clonotype.def for PC and BCR integration:
+```{r}
+i <- 1
+bcr_all.list[[i]]$cell <- rep("BCR", nrow(bcr_all.list[[i]]))
+pc_all.list[[i]]$cell <- rep("PC", nrow(pc_all.list[[i]]))
+bcrpc_1 <- 
+  rbind(bcr_all.list[[i]], pc_all.list[[i]]) %>% 
+  dplyr::group_by(v_gene_a, j_gene_a, v_gene_b, j_gene_b) %>% 
+  nest(.key = "barcode")
+bcrpc_1$clonotype_sizes <- unlist(lapply(bcrpc_1$barcode, nrow))
+  # Order dataframe by clonotype size:
+  bcrpc_1 <- bcrpc_1[order(bcrpc_1$clonotype_sizes, decreasing = T),]
+  # Add new clonotype names as column:
+  bcrpc_1$clonotypes_newname <- paste("clones", seq(1:nrow(bcrpc_1)), sep='')
+  bcrpc_1 <- unnest(bcrpc_1, cols = barcode)
+  bcrpc_1 <- as.data.frame(bcrpc_1)
+  # Mark which clones are having cells from PC and BCR dataset:
+  shared_clones <- unique(as.data.frame(bcrpc_1[bcrpc_1$cell =="BCR",c(18)])[,1])[
+  unique(as.data.frame(bcrpc_1[bcrpc_1$cell == "BCR",c(18)])[,1]) %in% unique(as.data.frame(bcrpc_1[bcrpc_1$cell =="PC",c(18)])[,1])]
+  
+  subsetbcpc <- bcrpc_1[bcrpc_1$clonotypes_newname %in% shared_clones,]
+  subsetbcpc.barcodes <- subsetbcpc[subsetbcpc$cell == "BCR",7]
+  
+DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .1, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= subsetbcpc.barcodes, 
+        cols.highlight = c("red"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "PC_shared"), values = c("grey", "red"))
+```
+
+- 9. BCR selection for Roy:
+```{r}
+# Memory B cells, IgA or IgG, highest expanded clones:
+i=8
+bcr_selection <- bcr_all.list[[i]][bcr_all.list[[i]]$clonotype_new %in%  memb.barcodes[[i]]$clonotype_new,c(7,8,11,12,15)]
+
+bcr_selection$preselected <- bcr_selection$barcode %in% memb.barcodes[[i]]$barcode
+bcr_selection <- bcr_selection[bcr_selection$cdr3_b %in% memb.barcodes[[i]]$cdr3_b,]
+bcr_selection <- bcr_selection[bcr_selection$cdr3_a %in% memb.barcodes[[i]]$cdr3_a,]
+
+bcr_selection <- bcr_selection[!bcr_selection$c_gene %in% c("IGHM", "IGHD"),]
+bcr_selection[,c(1,3,5,6)]
+
+roybcr.barcode <- c("old1798_TAAGTGCTCTCGTTTA",
+  "old1798_CTTCTCTTCGTCCGTT",
+  "old1798_ACTATCTCATCTGGTA",
+  "old1798_TTTGCGCAGTTGAGAT",
+  "old1840_GTATTCTCACACAGAG",
+  "old2453_TACCTATAGGTAGCCA",
+  "old2453_AGCGTCGTCATAGCAC",
+  "old2453_AGCTCTCTCCCTCAGT",
+  "young2423_TAGAGCTAGTGATCGG",
+  "young2423_ACGATACGTTGGTAAA",
+  "young2423_CGTCAGGCAAGCCATT",
+  "young2425_ACATGGTCAAGCGCTC",
+  "young2425_CAAGTTGCAAGCCGTC",
+  "young2425_CTAACTTGTCTAAAGA",
+  "young2425_TTTCCTCAGGACATTA",
+  "young2427_CAGCTAAAGTCGTACT",
+  "young2427_GCGAGAAAGGGTCTCC",
+  "young2427_AGCTTGAAGGCTACGA",
+  "young2427_CGATGGCGTAGCTGCC")
+
+
+patients <- c(5921798,5921840,5922051,5922453,
+              5921925,5922423,5922425,5922427)
+ig_prefix_patient <- c("old1798_","old1840_","old2051_","old2453_",
+                       "young1925_","young2423_","young2425_","young2427_")
+igblast <- NULL
+for(i in 1:8){
+  igblast_1 <- igblast.readin(bcr_location=patients[i], 
+                            prefix=ig_prefix_patient[i], 
+                            bcr_VDJ_data=bcr_all.list[[i]])
+  igblast <- rbind(igblast, igblast_1)
+}
+
+roybcr.sequences <- igblast[igblast$sequence_id %in% roybcr.barcode,]
+nrow(roybcr.sequences)/length(roybcr.barcode) == 2
+
+roybcr.sequences.ordered <- roybcr.sequences[roybcr.sequences$locus != "IGH",]
+roybcr.sequences.ordered
+
+selected_clones <- bcell.nocd3nopc@meta.data$clonotype_id[rownames(bcell.nocd3nopc@meta.data) %in% roybcr.barcode]
+rownames(bcell.nocd3nopc@meta.data)[bcell.nocd3nopc@meta.data$clonotype_id %in% selected_clones]
+
+bcr_1 <- c("old1798_TAAGTGCTCTCGTTTA",
+  "old1798_CTTCTCTTCGTCCGTT",
+  "old1798_ACTATCTCATCTGGTA",
+  "old1798_TTTGCGCAGTTGAGAT")
+
+bcr_2 <- c("old1840_GTATTCTCACACAGAG")
+bcr_4 <- c("old2453_TACCTATAGGTAGCCA",
+  "old2453_AGCGTCGTCATAGCAC",
+  "old2453_AGCTCTCTCCCTCAGT")
+bcr_6 <- c("young2423_TAGAGCTAGTGATCGG",
+  "young2423_ACGATACGTTGGTAAA",
+  "young2423_CGTCAGGCAAGCCATT")
+bcr_7 <- c("young2425_ACATGGTCAAGCGCTC",
+  "young2425_CAAGTTGCAAGCCGTC",
+  "young2425_CTAACTTGTCTAAAGA",
+  "young2425_TTTCCTCAGGACATTA")
+bcr_8 <- c("young2427_CAGCTAAAGTCGTACT",
+  "young2427_GCGAGAAAGGGTCTCC",
+  "young2427_AGCTTGAAGGCTACGA",
+  "young2427_CGATGGCGTAGCTGCC")
+
+bcr_1 <- c("old1798_ACTATCTCATCTGGTA", "old1798_ATTGGACGTAAGGGCT",   "old1798_CTTCTCTTCGTCCGTT" ,  "old1798_TAAGTGCTCTCGTTTA" , 
+ "old1798_TGGCCAGGTGATAAAC",   "old1798_TTTGCGCAGTTGAGAT")
+bcr_2 <- c("old1840_GTATTCTCACACAGAG")
+bcr_4 <- c("old2453_AGCGTCGTCATAGCAC",   "old2453_AGCTCTCTCCCTCAGT",   "old2453_TACCTATAGGTAGCCA")
+bcr_6 <- c("young2423_ACGATACGTTGGTAAA","young2423_CGTCAGGCAAGCCATT" ,"young2423_TAGAGCTAGTGATCGG")
+bcr_7 <- c("young2425_ACATGGTCAAGCGCTC", "young2425_CAAGTTGCAAGCCGTC","young2425_CTAACTTGTCTAAAGA", "young2425_TTTCCTCAGGACATTA")
+bcr_8 <- c("young2427_AGCTTGAAGGCTACGA", "young2427_CAGCTAAAGTCGTACT","young2427_CGATGGCGTAGCTGCC", "young2427_GCGAGAAAGGGTCTCC", "young2427_TTAGGCAAGATCCTGT", "young2427_TTCGAAGAGCCTTGAT")
+
+DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .5, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= rownames(bcell.nocd3nopc@meta.data)[bcell.nocd3nopc@meta.data$clonotype_id %in% selected_clones], 
+        cols.highlight = c('blue'), cols= "grey",
+        sizes.highlight = 2)
+
+DimPlot(bcell.nocd3nopc, reduction = "umap", pt.size = .5, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= list('Pt-1' = bcr_1,
+                              'Pt-2' = bcr_2,
+                              'Pt-4' = bcr_4,
+                              'Pt-6' = bcr_6,
+                              'Pt-7' = bcr_7,
+                              'Pt-8' = bcr_8), 
+        cols.highlight = rev(c("turquoise1", "turquoise2", "turquoise4",
+                               "slateblue2", "slateblue3", "slateblue4")), cols= "grey",
+        sizes.highlight = 2)
+
+
+# Add SHM and isotype info to 19 BCR table:
+shm.all$clonal_SHM[rownames(shm.all) %in% roybcr.sequences.ordered$sequence_id]
+shm.all$sequence_id <- rownames(shm.all)
+shm.all$clonal_SHM[rownames(shm.all) %in% roybcr.sequences.ordered$sequence_id]
+
+selectedBCR_shm <- left_join(roybcr.sequences.ordered,shm.all)
+selectedBCR_shm <- selectedBCR_shm[,c(1,51,52)]
+selectedBCR_shm$clonal_SHM <- (1-selectedBCR_shm$clonal_SHM/2)*100
+
+isotype_patient <- rbind(
+old1798_B,
+old1840_B,
+old2051_B,
+old2453_B,
+young1925_B,
+young2423_B,
+young2425_B,
+young2427_B)
+isotype_patient <- isotype_patient[,c(7,11)]
+isotype_patient$sequence_id <- isotype_patient$barcode
+selectedBCR_shm_iso <- left_join(selectedBCR_shm,isotype_patient)
+selectedBCR_shm_iso <- selectedBCR_shm_iso[,c(1,3,5)]
+
+write_csv(selectedBCR_shm_iso, path = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/selected_19BCR_shm_iso.csv")
+```
+
+- 10. VDJ info on top10 clonotypes:
+```{r}
+tcr_all.list
+bcr_all.list
+
+clon10 <- unique(bcr_all.list[[1]]$clonotype_new)[1:10]
+vdj.top10 <- NULL
+for(i in 1:8){
+  vdj.top10.pat <- bcr_all.list[[i]][bcr_all.list[[i]]$clonotype_new %in% clon10,c(3,4,1,2,12,8,15,14)]
+  vdj.top10.pat <- vdj.top10.pat[!duplicated(vdj.top10.pat$clonotype_new),]
+  colnames(vdj.top10.pat) <- c('TRBV', 'TRBJ', 'TRAV', 'TRAJ', 'CDR3b', 'CDR3a', 'Clonotype','Size')
+  vdj.top10.pat$patient <- rep(paste0("Patient_0",i),nrow(vdj.top10.pat))
+  vdj.top10 <- rbind(vdj.top10, vdj.top10.pat)
+}
+filter(vdj.top10, TRAV == "IGHV3-23", TRBV == "IGKV3-20")
+
+write.csv(vdj.top10, "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/vdj_top20_tcr_pt28.csv")
+```
+
+- 11.1 GLIPH2 input (data prep):
+```{r}
+tcr_all.list[[1]][,c(12,3,4,8)] %>% group_by(cdr3_b, v_gene_b, j_gene_b, cdr3_a) %>% nest(.key = "cdr3_b")
+
+gliph_in <- NULL
+for(i in c(2,4,8)){
+  gliph_in.pat <- tcr_all.list[[i]][!duplicated(tcr_all.list[[i]]$clonotype_new),c(12,3,4,8,15,14)]
+  colnames(gliph_in.pat) <- c('CDR3b', 'TRBV', 'TRBJ', 'CDR3a', 'subject:condition', 'count')
+  gliph_in.pat$`subject:condition` <- paste0(i, "/08", ":convCOVID")
+  gliph_in <- rbind(gliph_in, gliph_in.pat)
+}
+
+write.table(gliph_in, file = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph_in.txt", sep = "\t", row.names = F, quote = F)
+
+m <- matrix(data = 
+c(c('A*03:01', 'A*30:01',
+'B*13:02', 'B*40:02',
+'C*02:02', 'C*06:02'),
+c('A*02:01', 'A*26:01',
+'B*38:01', 'B*44:02',
+'C*05:01', 'C*12:03'),
+c('A*01:01', 'A*24:02',
+'B*07:02', 'B*15:29',
+'C*07:02', 'C*07:04'),
+c('A*02:01', 'A*02:01',
+'B*15:01', 'B*35:01',
+'C*03:04', 'C*04:01'),
+c('A*11:01', 'A*11:01',
+'B*18:03', 'B*40:01',
+'C*03:04', 'C*07:01'),
+c('A*01:01', 'A*68:01',
+'B*07:02', 'B*35:03',
+'C*04:01', 'C*07:02'),
+c('A*03:01', 'A*24:02',
+'B*18:01', 'B*35:02',
+'C*04:01', 'C*07:01'),
+c('A*02:01', 'A*24:02',
+'B*13:02', 'B*35:02',
+'C*04:01', 'C*06:02')), nrow=8, ncol=6, byrow=T)
+df.hla <- as.data.frame(m)
+df.hla$V0 <- c('1/08','2/08','3/08','4/08','5/08','6/08','7/08','8/08')
+df.hla <- df.hla[,c(7,1:6)]
+
+write.table(df.hla, file = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/hla_all.txt", sep = "\t", row.names = F, quote = F)
+
+gliphout <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2_covid_allTCRs.csv")
+gliphout_hla <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2_covid_allTCRsandHLA.csv")
+
+# Read in known COVID reactive TCRs:
+vdjdb_covid <- read_tsv("/Users/fbieberich/Downloads/SearchTable-2020-10-14 20 03 29.993.tsv")
+vdjdb_covid <- vdjdb_covid[vdjdb_covid$Gene == "TRB",]
+covid_tcr_1 <- vdjdb_covid[,c(3,4,5,10,11)]
+covid_HLA <- vdjdb_covid[,c(7)]
+covid_tcr_1$Epitope <- paste0("01/99:",covid_tcr_1$Epitope)
+covid_tcr_1$`Epitope gene` <- rep(1,nrow(covid_tcr_1))
+colnames(covid_tcr_1) <- c('CDR3b', 'TRBV', 'TRBJ', 'subject:condition', 'count')
+covid_tcr_1$TRBV <- gsub('.{3}$', '', covid_tcr_1$TRBV)
+covid_tcr_1$TRBJ <- gsub('.{3}$', '', covid_tcr_1$TRBJ)
+
+covid_and_patient <- full_join(gliph_in, covid_tcr)
+
+# Read in known COVID reactive TCRs from Shomuradova et al.:
+vdjdb_covid <- read_tsv("/Users/fbieberich/Downloads/SearchTable-2020-11-17 08 51 00.064.tsv")
+vdjdb_covid <- vdjdb_covid[vdjdb_covid$Gene == "TRB",]
+covid_tcr <- vdjdb_covid[,c(3,4,5,10,11)]
+covid_HLA <- vdjdb_covid[,c(7)]
+covid_tcr$Epitope <- paste0("01/99:",covid_tcr$Epitope)
+covid_tcr$`Epitope gene` <- rep(1,nrow(covid_tcr))
+colnames(covid_tcr) <- c('CDR3b', 'TRBV', 'TRBJ', 'subject:condition', 'count')
+covid_tcr$TRBV <- gsub('.{3}$', '', covid_tcr$TRBV)
+covid_tcr$TRBJ <- gsub('.{3}$', '', covid_tcr$TRBJ)
+
+covid_and_patient <- full_join(gliph_in, covid_tcr)
+
+# Read in known CMV and EBV reactive TCRs:
+vdjdb_cmv <- read_tsv("/Users/fbieberich/Downloads/SearchTable-2020-10-16 13 38 57.466.tsv")
+vdjdb_cmv <- vdjdb_cmv[vdjdb_cmv$Gene == "TRB",]
+vdjdb_cmv <- vdjdb_cmv[order(vdjdb_cmv$Score, decreasing = T),]
+cmvebv_tcr <- vdjdb_cmv[c(which(vdjdb_cmv$`Epitope species` == "CMV")[1:250],
+which(vdjdb_cmv$`Epitope species` == "EBV")[1:250]),c(3,4,5,10,11,12)]
+
+cmvebv_tcr$Epitope <- paste0("01/50:",cmvebv_tcr$Epitope, "_", cmvebv_tcr$`Epitope gene`,  "_",cmvebv_tcr$`Epitope species`)
+cmvebv_tcr$`Epitope gene` <- rep(1,nrow(cmvebv_tcr))
+cmvebv_tcr <- cmvebv_tcr[,-6]
+colnames(cmvebv_tcr) <- c('CDR3b', 'TRBV', 'TRBJ', 'subject:condition', 'count')
+cmvebv_tcr$TRBV <- gsub('.{3}$', '', cmvebv_tcr$TRBV)
+cmvebv_tcr$TRBJ <- gsub('.{3}$', '', cmvebv_tcr$TRBJ)
+
+# Read in known testis neoantigen reactive TCRs:
+vdjdb_neo <- read_tsv("/Users/fbieberich/Downloads/SearchTable-2020-11-02 10 54 12.547.tsv")
+neo_tcr <- vdjdb_neo[,c(3,4,5,10,11,12)]
+neo_tcr$Epitope <- paste0("01/50:",neo_tcr$Epitope, "_", neo_tcr$`Epitope gene`,  "_",neo_tcr$`Epitope species`)
+neo_tcr$`Epitope gene` <- rep(1,nrow(neo_tcr))
+neo_tcr <- neo_tcr[,-6]
+colnames(neo_tcr) <- c('CDR3b', 'TRBV', 'TRBJ', 'subject:condition', 'count')
+neo_tcr$TRBV <- gsub('.{3}$', '', neo_tcr$TRBV)
+neo_tcr$TRBJ <- gsub('.{3}$', '', neo_tcr$TRBJ)
+# Join BS833 TCRs, CMV/EBV and Testis neoantigen TCRs:
+added_TCRs <- full_join(cmvebv_tcr,neo_tcr)
+patient_cmv_neo <- full_join(gliph_in_bs833, added_TCRs)
+write.table(patient_cmv_neo, file = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/patient_cmv_neo.txt", sep = "\t", row.names = F, quote = F)
+
+# Join HLA02:01 patients, Covid binders and CMV&EBV binders:
+covid_and_patient <- full_join(gliph_in, covid_tcr)
+covid_cmvebv_and_patient <- full_join(covid_and_patient, cmvebv_tcr)
+
+write.table(covid_cmvebv_and_patient, file = "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/covid_cmvebv_and_patient.txt", sep = "\t", row.names = F, quote = F)
+```
+
+- 11.2 GLIPH2 output - read in and multiple patient cluster identification:
+```{r}
+# Read in GLIPH output:
+gliphout_hla <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2_covid_allTCRsandHLA.csv")
+gliphout_covid_and_patients <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2_covid_vdjdb_patient.csv")
+gliphout_covid_cmvebv_and_patients <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2_covid_cmvebv_vdjdb_patient.csv")
+gliphout_newHLA1 <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliphout_newHLA_ref1.csv")
+gliphout_newHLA2 <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliphout_newHLA_ref2.csv")
+
+# Find clusters that have TCRs from multiple patients:
+gliphout <- gliphout_covid_cmvebv_and_patients
+gliphout <- gliphout_hla
+gliphout <- gliphout_newHLA1
+gliphout <- gliphout_newHLA2
+
+# select the indices that have a HLA matched!
+#######
+#######
+gliphout_hla.only <- gliphout_hla[,c(20,21,22)]
+rows_w_hla <- unique(c(grep(pattern = "!", x=gliphout_hla.only[,1]),
+grep(pattern = "!", x=gliphout_hla.only[,2]),
+grep(pattern = "!", x=gliphout_hla.only[,3])))
+gliph_hlaonly.sampleindex <- gliphout_hla[rows_w_hla,c(1,18,20,21,22)]
+gliph_hlaonly.sampleindex <- gliphout_hla[rows_w_hla,c(1,18)]
+
+gliphout <- gliphout_hla[rows_w_hla,]
+#######
+#######
+nested_expanded_clonotypes <- 
+  gliphout %>% 
+  dplyr::group_by(index) %>% 
+  nest(.key = "index")
+
+sample_length = function(x) {
+  length_sample <- nrow(unique(x[,17]))
+  return(length_sample)
+}
+nested_expanded_clonotypes$sample_number <- unlist(lapply(nested_expanded_clonotypes$index...2, sample_length))
+nested_expanded_clonotypes <- nested_expanded_clonotypes[nested_expanded_clonotypes$sample_number > 1,]
+nested_expanded_clonotypes <- nested_expanded_clonotypes[order(nested_expanded_clonotypes$sample_number, decreasing = T),]
+unnested_expanded_clonotypes <- unnest(nested_expanded_clonotypes, cols = index...2)
+head(unnested_expanded_clonotypes[,c(1,2,3,13,18,31)])
+length(unique(unnested_expanded_clonotypes$index...1))
+ 
+filter(unnested_expanded_clonotypes, Fisher_score <= 0.05) %>% pull(index...1) %>% unique -> sign_indices
+
+unnested_expanded_clonotypes[!duplicated(unnested_expanded_clonotypes$index...1),] %>% pull(Fisher_score)
+colnames(unnested_expanded_clonotypes)
+
+
+# Make double combinations of same cluster patient-patient frequencies:
+# New 20/10/2020 - final figure!
+df.final <- NULL
+nested_expanded_clonotypes_sign <- nested_expanded_clonotypes[nested_expanded_clonotypes$index...1 %in% sign_indices,]
+for(i in 1:nrow(nested_expanded_clonotypes_sign)){
+  patients_cluster <- unique(nested_expanded_clonotypes_sign$index...2[[i]][,17])
+  combined_patients_cluster <- t(combn(patients_cluster$Sample, 2))
+  df <- data.frame(one = combined_patients_cluster[,1], two = combined_patients_cluster[,2])
+  df.rev <- data.frame(one = combined_patients_cluster[,2], two = combined_patients_cluster[,1])
+  df.full <- rbind(df,df.rev)
+  df.final <- rbind(df.final,df.full)
+}
+df.final.freq <- table(df.final)/552*100
+colnames(df.final.freq) <- seq(1,8)
+rownames(df.final.freq) <- seq(1,8)
+df.final.freq
+
+df.final.freq %>%
+  as.data.frame -> df.final.freq
+colnames(df.final.freq) <- c("Patient", "Patient_", "Freq")
+df.final.freq %>%
+  ggplot() +
+  aes(y=Patient, x=Patient_, fill=Freq) %>%
+  geom_tile(colour="white",size=0.15) +
+    geom_text(colour = "black", aes(y=Patient, x=Patient_, label=round(Freq, digits = 1)), size=3.5) + 
+
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Number of GLIPH2 Clusters shared between patients; % of all clusters")
+```
+
+- 11.3 Select clusters that have shared covid/CMV/EBV & patient TCRs:
+```{r}
+gliphout_covid_cmvebv_and_patients <- read.csv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/gliph2out_newcovid_cmv_patient_17112020.csv")
+
+gliphout_covid_cmvebv_and_patients[,c(1,18)] %>% group_by(index) %>% unique %>% pull(index) %>% table %>% .[{.>1}] %>% names %>% as.integer -> shared_index
+
+shared_clusters <- gliphout_covid_cmvebv_and_patients[gliphout_covid_cmvebv_and_patients$index %in% shared_index,]
+shared_clusters[,c(1,18)] %>% group_by(index) %>% unique %>% pull(index) -> unique.index
+
+shared_clusters[,c(1,18)] %>% group_by(index) %>% unique %>% pull(Sample) %>% grep("99",.) -> covid.index
+shared_clusters[shared_clusters$index %in% unique.index[covid.index],] %>% 
+  group_by(index) %>% unique -> shared_clusters.covid
+
+shared_clusters[,c(1,18)] %>% group_by(index) %>% unique %>% pull(Sample) %>% grep("CMV",.) -> cmv.index
+shared_clusters[shared_clusters$index %in% unique.index[cmv.index],]%>% 
+  group_by(index) %>% unique -> shared_clusters.cmv
+
+shared_clusters[,c(1,18)] %>% group_by(index) %>% unique %>% pull(Sample) %>% grep("EBV",.) -> ebv.index
+shared_clusters[shared_clusters$index %in% unique.index[ebv.index],] %>% 
+  group_by(index) %>% unique -> shared_clusters.ebv
+
+as.data.frame(shared_clusters.covid)[!shared_clusters.covid$index %in% 
+                                       c(unique(shared_clusters.ebv$index),
+                                         unique(shared_clusters.cmv$index)),1] %>% 
+  unique -> final.covid.index
+
+shared_clusters.covid[shared_clusters.covid$index %in% final.covid.index,] -> shared_clusters.finalcovid
+shared_clusters.finalcovid[,c(1,18)] %>% group_by(index) %>% unique
+
+shared_clusters.finalcovid_sign <- filter(shared_clusters.finalcovid, Fisher_score <= 0.05)
+shared_clusters.finalcmv_sign <- filter(shared_clusters.cmv, Fisher_score <= 0.05)
+shared_clusters.finalebv_sign <- filter(shared_clusters.ebv, Fisher_score <= 0.05)
+
+shared_clusters.finalcovid_sign
+
+####
+####
+# GLIPH2 TCR usage COVID-TCR x patient clusters figure 22/10/2020
+####
+####
+barplot(table(shared_clusters.finalcovid_sign$Sample)[7:9])
+tcrpatients <- c("Patient 2","Patient 4","Patient 8")
+
+TCR_covid_shared <- table(shared_clusters.finalcovid_sign$Sample)[7:9]
+TCR_covid_shared <- table(TCR_covid_select_nocd4$Patient)
+
+names(TCR_covid_shared) <- tcrpatients
+TCR_covid_shared %>%
+  as.data.frame -> TCR_covid_shared.df
+colnames(TCR_covid_shared.df) <- c("Patients", "Number of TCRs")
+TCR_covid_shared.df %>%
+  ggplot() +
+  aes(y=`Number of TCRs`, x=Patients) %>%
+  geom_bar(stat="identity", width=0.8, color="black", fill="white") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Number of TCRs per HLA-A0201 patient abundant in COVID-TCR cluster")
+
+####
+####
+# Info on those patient TCRs:
+####
+####
+# Add barcode to selected TCRs:
+# Select only CD4 negative TCRs:
+
+#!!!
+# Write up as function:
+#!!!
+
+subsetsharedTCRs <- shared_clusters.finalcovid_sign[,c(1:19)]
+colnames(subsetsharedTCRs)[14:17] <- c("CDR3b", "TRBV", "TRBJ", "CDR3a")
+combined_TCRs <- full_join(TCR_covid_select, subsetsharedTCRs)
+combined_TCRs[order(combined_TCRs$index),]
+
+
+
+pattcr_shared_covid <- shared_clusters.finalcovid_sign[shared_clusters.finalcovid_sign$Sample %in% 
+                           names(table(shared_clusters.finalcovid_sign$Sample)[7:9]),c(1:19)]
+gliph_in <- NULL
+for(i in c(2,4,8)){
+  gliph_in.pat <- tcr_all.list[[i]][!duplicated(tcr_all.list[[i]]$clonotype_new),c(12,3,4,8,14,7,15,1,2)]
+  colnames(gliph_in.pat) <- c('TcRb','V', 'J', 'TcRa', 'Sample', "barcodes", "clonotype", "Va", "Ja")
+  gliph_in.pat$Sample <- paste0(i, "/08", ":convCOVID")
+  gliph_in <- rbind(gliph_in, gliph_in.pat)
+}
+joined_df.covid <- left_join(pattcr_shared_covid,gliph_in)
+TCR_covid_select <- joined_df.covid[,c('index', 'TcRb','V', 'J', 'TcRa', "Va", "Ja", 'Sample', "clonotype", "barcodes")]
+colnames(TCR_covid_select) <- c('index', 'CDR3b','TRBV', 'TRBJ', 'CDR3a', "TRAV", "TRAJ", 'Patient', "Clonotype", "barcodes")
+TCR_covid_select <- TCR_covid_select[,c(2,3,5,6,1,4,8,7,9)]
+TCR_covid_select[,7] <-  as.numeric(gsub(as.data.frame(TCR_covid_select)[,7],pattern = "clonotype",replacement = ""))
+TCR_covid_select[TCR_covid_select[,8] == "2/08:convCOVID",8] <- "Patient_02"
+TCR_covid_select[TCR_covid_select[,8] == "4/08:convCOVID",8] <- "Patient_04"
+TCR_covid_select[TCR_covid_select[,8] == "8/08:convCOVID",8] <- "Patient_08"
+TCR_covid_select <- TCR_covid_select[order(TCR_covid_select[,8], TCR_covid_select[,7]),]
+
+
+TCR_covid_select_nocd4 <- TCR_covid_select[!TCR_covid_select$barcodes %in% rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data),]
+TCR_covid_select_cd4 <- TCR_covid_select[TCR_covid_select$barcodes %in% rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data),]
+TCR_covid_select_nocd4 <- unique(TCR_covid_select_nocd4)
+
+subset_tcr_shared <- pattcr_shared_covid[,c(1,2,12,13,14,15,16,17)]
+colnames(subset_tcr_shared) <- c("index","pattern", "motif", "CDR3b_motif", "CDR3b", "TRBV", "TRBJ", "CDR3a")
+final_shared_covid_TCRs <- left_join(TCR_covid_select_nocd4,subset_tcr_shared)
+final_shared_covid_TCRs <- final_shared_covid_TCRs[order(final_shared_covid_TCRs$index),]
+final_shared_covid_TCRs <- final_shared_covid_TCRs[,c(10,11,5,1,2,6,3,4,7,8)]
+
+
+selected_for_expr <- TCR_covid_select[TCR_covid_select$index %in% c(1,
+3,
+6,
+38,
+61,
+79,
+82,
+98,
+166,
+202,
+245,
+259,
+279,
+285,
+385,
+428,
+469,
+533,
+540,
+664),]
+
+finalselectedgliph2_TCRs <- selected_for_expr[!duplicated(selected_for_expr$barcodes),]
+finalselectedgliph2_TCRs[order(finalselectedgliph2_TCRs$Patient),]
+
+write.csv(final_shared_covid_TCRs, "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/figures/final_shared_covid_TCRs.csv")
+
+unique(final_shared_covid_TCRs$CDR3b)
+
+
+
+
+# Do the same including the known covid binders:
+filter(shared_clusters.finalcovid_sign, index %in% unique(final_shared_covid_TCRs$index)) -> final_shared_covid_TCRs_with_binders
+subset_tcr_shared_both <- final_shared_covid_TCRs_with_binders[,c(1,2,12,13,14,15,16,17,18)]
+colnames(subset_tcr_shared_both) <- c("index","pattern", "motif", "CDR3b_motif", "CDR3b", "TRBV", "TRBJ", "CDR3a", "Sample")
+subset_tcr_shared_both_nocd4 <- subset_tcr_shared_both[!subset_tcr_shared_both$CDR3b %in% TCR_covid_select_cd4$CDR3b,]
+subset_tcr_shared_both_nocd4
+
+final_shared_covid_TCRs_both <- full_join(TCR_covid_select_nocd4,subset_tcr_shared_both_nocd4)
+final_shared_covid_TCRs_both <- final_shared_covid_TCRs_both[order(final_shared_covid_TCRs_both$index),]
+final_shared_covid_TCRs_both <- final_shared_covid_TCRs_both[,c(10:13, 1:9)]
+write.csv(final_shared_covid_TCRs_both, "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/figures/final_shared_covid_TCRs_both.csv")
+
+
+# Get table with CMV and EBV and patient TCR info:
+gliph_in
+shared_clusters.finalcmv_sign
+shared_clusters.finalebv_sign
+# Combine all datasets with VDJ data:
+#pattcr_shared_cmv <- shared_clusters.finalcmv_sign[shared_clusters.finalcmv_sign$Sample %in% 
+#                           names(table(shared_clusters.finalcmv_sign$Sample)[7:9]),c(1:19)]
+#pattcr_shared_ebv <- shared_clusters.finalebv_sign[shared_clusters.finalebv_sign$Sample %in% 
+#                           names(table(shared_clusters.finalebv_sign$Sample)[7:9]),c(1:19)]
+all_shared_cmvebv_sign <- full_join(shared_clusters.finalcmv_sign, shared_clusters.finalebv_sign)
+all_shared_cmvebv_sign <- all_shared_cmvebv_sign[,c(1,2,14:18)]
+joined_df.cmvebv <- left_join(all_shared_cmvebv_sign,gliph_in)
+final_df.cmvebv <- joined_df.cmvebv[order(joined_df.cmvebv$index),]
+final_df.cmvebv <- final_df.cmvebv[,c(1,2,3,4,5,6,10,11,7)]
+colnames(final_df.cmvebv) <- c('index',	'pattern',	'CDR3b',	'TRBV',	'TRBJ',	'CDR3a',	'TRAV',	'TRAJ',	'Patient')
+
+TCR_covid_cmvebv_cd4_index <- joined_df.cmvebv$index[joined_df.cmvebv$barcodes %in% rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data)]
+
+final_df.cmvebv_nocd4 <- final_df.cmvebv[!final_df.cmvebv$index %in% TCR_covid_cmvebv_cd4_index,]
+write.csv(final_df.cmvebv_nocd4, "/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/figures/final_convTCR_cmvebv_nocd4_both.csv")
+
+
+#
+DimPlot(covid.all.TCRonly_nodoub_sct.cd4, reduction = "umap", pt.size = .1, label=F, 
+        cells.highlight= unique(selected_for_expr$barcodes),
+        cols.highlight = c("purple"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "Covid"), values = c("grey", "purple"))
+```
+
+- 11.4 Patient abundance analysis
+```{r}
+####
+####
+# GLIPH2 HLA usage figure 22/10/2020
+####
+####
+nested_data <- nested_expanded_clonotypes_sign
+
+hla.df <- list()  
+for(i in 1:nrow(nested_data)){
+  hla_a <- na.omit(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(19)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))
+  hla_b <- na.omit(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(20)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))
+  hla_c <- na.omit(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(21)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))
+
+  if(sum(duplicated(hla_a))+1 == length(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(19)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))){
+  
+    hla.df[[i]] <- str_extract(as.data.frame(nested_data$index...2[[i]])[,c(19)], "([A-C])\\*\\d\\d\\:\\d\\d\\!")[1]
+    
+  } else if(sum(duplicated(hla_b))+1 == length(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(20)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))){
+  
+    hla.df[[i]] <- str_extract(as.data.frame(nested_data$index...2[[i]])[,c(20)], "([A-C])\\*\\d\\d\\:\\d\\d\\!")[1]  
+    
+  } else if(sum(duplicated(hla_c))+1 == length(str_extract(as.data.frame(nested_data$index...2[[i]])[,c(21)], "([A-C])\\*\\d\\d\\:\\d\\d\\!"))){
+  
+    hla.df[[i]] <- str_extract(as.data.frame(nested_data$index...2[[i]])[,c(21)], "([A-C])\\*\\d\\d\\:\\d\\d\\!")[1]  
+    
+  }
+}
+barplot(table(do.call("rbind", hla.df)))
+hla_freq_crosspat <- table(do.call("rbind", hla.df))/sum(table(do.call("rbind", hla.df)))*100
+names(hla_freq_crosspat) <- gsub(names(hla_freq_crosspat), pattern = "!", replacement = "")
+hla_freq_crosspat %>%
+  as.data.frame -> hla_freq_crosspat.df
+colnames(hla_freq_crosspat.df) <- c("HLA class I", "Percentage")
+hla_freq_crosspat.df %>%
+  ggplot() +
+  aes(y=Percentage, x=`HLA class I`) %>%
+  geom_bar(stat="identity", width=0.8, color="black", fill="white") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("HLA usage for clusters shared between patients - in %")
+
+gliph_hlaonly.sampleindex$HLA <- paste(gliph_hlaonly.sampleindex$HLA.A,
+                                       gliph_hlaonly.sampleindex$HLA.B,
+                                       gliph_hlaonly.sampleindex$HLA.C)
+gliph_hlaonly.sampleindex <- gliph_hlaonly.sampleindex[,-(3:5)]
+
+gliph_hlaonly.sampleindex$matchedHLA <- str_extract(gliph_hlaonly.sampleindex$HLA, "([A-C])\\*\\d\\d\\:\\d\\d\\!")
+for(i in unique(gliph_hlaonly.sampleindex$index)){
+  gliph_hlaonly.sampleindex[gliph_hlaonly.sampleindex$index == i,4] %>%
+    unique %>% length %>% print
+}
+hlausage <- (table(gliph_hlaonly.sampleindex[,c(2,4)])/ rowSums(table(gliph_hlaonly.sampleindex[,c(2,4)])))*100
+```
+
+# outdated!- 11.5 GLIPH2 figure generation:
+```{r}
+sample %>%
+  table %>%
+  as.data.frame %>%
+  ggplot() +
+  aes(y=V1, x=V2, fill=Freq) %>%
+  geom_tile(colour="white",size=0.15) +
+    geom_text(colour = "black", aes(y=V1, x=V2, label=Freq), size=3.5) + 
+
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Number of GLIPH2 Clusters shared between patients")
+
+
+table(df_all.t[,c(1,2)]) %>%
+  as.data.frame() %>%
+  ggplot() +
+  aes(y=patientA, x=patientB, fill=Freq) %>%
+  geom_tile(colour="white",size=0.15) +
+    geom_text(colour = "black", aes(y=patientA, x=patientB, label=Freq), size=3.5) + 
+
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Number of GLIPH2 Clusters shared between patients")
+
+
+hlausage %>%
+  as.data.frame() %>%
+  ggplot(mapping = aes(x=matchedHLA, y=Sample, fill=Freq)) +
+  geom_tile(mapping = aes(fill = Freq),colour="white",size=0.15) +
+  geom_text(colour = "black",aes(label=round(Freq/100*rowSums(table(gliph_hlaonly.sampleindex[,c(2,4)])), digits = 1)), size=3) + 
+
+  scale_fill_gradient(
+  low = "white",
+  high = "blue",
+  space = "Lab",
+  na.value = "white",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("HLA usage for patient clonotypes in GLIPH2 Clusters")
+```
+
+- 11.6 Get full info on TCRs (barcodes, all V, J and CDR3):
+```{r}
+# FOR DATA TABLE = Full TCR information:
+#vdjdb_pt_shared.tcr <-  unnest(nested_expanded_clonotypes[nested_expanded_clonotypes$index...1 %in% #c(67,69,102,1902,21,73,91),])
+#gliph_in[as.data.frame(gliph_in)[,1] %in% as.data.frame(vdjdb_pt_shared.tcr)[,c(14)],]
+#vdjdb_pt_shared.tcr[as.data.frame(vdjdb_pt_shared.tcr)[,c(14)] %in% as.data.frame(gliph_in)[,1],]
+#1. Get barcodes:
+gliph_in <- NULL
+for(i in c(2,4,8)){
+  gliph_in.pat <- tcr_all.list[[i]][!duplicated(tcr_all.list[[i]]$clonotype_new),c(12,3,4,8,14,7,15)]
+  colnames(gliph_in.pat) <- c('TcRb','V', 'J', 'TcRa', 'Sample', "barcodes", "clonotype")
+  gliph_in.pat$Sample <- paste0(i, "/08", ":convCOVID")
+  gliph_in <- rbind(gliph_in, gliph_in.pat)
+}
+joined_df.covid <- left_join(shared_clusters.finalcovid,gliph_in)
+joined_df.cmv <- left_join(shared_clusters.cmv,gliph_in)
+joined_df.ebv <- left_join(shared_clusters.ebv,gliph_in)
+
+#2. use clonotype info to get all cells:
+#covidTCR <- na.omit(joined_df.covid[,c(31,32)])
+#covidTCR$patient <- str_extract(covidTCR$barcodes, "([a-z]+)\\d\\d\\d\\d")
+
+patients <- c('Patient_02', 'Patient_04', 'Patient_08')
+covid_tcr.all <- NULL
+for(i in c(2,4,8)){
+  covid.barcodes <- tcr_all.list[[i]][tcr_all.list[[i]]$clonotype_new %in% 
+                                   paste0("clonotype", as.data.frame(TCR_covid_select)[TCR_covid_select$Patient == patients,7]),7]
+  covid_tcr.all <- c(covid_tcr.all,covid.barcodes$barcode)
+}
+unique(c(TCR_covid_select$barcodes,covid_tcr.all))
+
+cd4_covid_tcrs <- rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data)[rownames(covid.all.TCRonly_nodoub_sct.cd4@meta.data) %in% unique(c(TCR_covid_select$barcodes,covid_tcr.all))]
+cd4_covid_tcrs <- tcr_all.final[tcr_all.final$barcode %in% cd4_covid_tcrs,c(7,15)]
+
+TCR_covid_select[c(!paste0("clonotype", as.data.frame(TCR_covid_select)[TCR_covid_select$Patient == 'Patient_02',7]) %in% cd4_covid_tcrs$clonotype_new[1:8],
+!paste0("clonotype", as.data.frame(TCR_covid_select)[TCR_covid_select$Patient == 'Patient_04',7]) %in% cd4_covid_tcrs$clonotype_new[9:12],
+!paste0("clonotype", as.data.frame(TCR_covid_select)[TCR_covid_select$Patient == 'Patient_08',7]) %in% cd4_covid_tcrs$clonotype_new[13:19]),]
+
+DimPlot(covid.all.TCRonly_nodoub_sct.cd8, reduction = "umap", pt.size = .1, label=F, 
+        cells.highlight= unique(c(TCR_covid_select$barcodes,covid_tcr.all)),
+        cols.highlight = c("purple"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "Covid"), values = c("grey", "purple"))
+```
+
+- 12.1 Cluster BCR dataset of known COVID binders with ours:
+Prepare data
+```{r}
+knowncovid_bcrs <- read_tsv("/Users/fbieberich/Documents/ETH_projects/Covid19_PC_BCR_10x_project/Late_timepoint_patients/covabdab_nt_patient_small.tsv")
+colnames(knowncovid_bcrs)
+knowncovid_bcrs <- mutate(knowncovid_bcrs, 'cdr3_b_length' = nchar(CDRH3))
+knowncovid_bcrs <- mutate(knowncovid_bcrs, 'cdr3_a_length' = nchar(CDRL3))
+knowncovid_bcrs$identity <- rep('KnownBinder',nrow(knowncovid_bcrs))
+knowncovid_bcrs <- knowncovid_bcrs[,c(3,4,5,6,9,10,1,2,11)]
+colnames(knowncovid_bcrs) <- c("v_gene_b","j_gene_b","v_gene_a","j_gene_a","cdr3_b_length","cdr3_a_length","cdr3_b","cdr3_a","identity")
+bcr_all.final$identity <- rep('ConvPatients',nrow(bcr_all.final))
+
+bcr_combined <- full_join(bcr_all.final, knowncovid_bcrs)
+```
+Cluster the data
+```{r}
+# Rules: Same HV, HJ, KV, KJ, CDR3H length, CDR3K length, 85% CDR3b similarity
+# Find shared clones between BCR and known binder VDJ set
+# Unify clones by V-,J-gene and CDR3 length:
+nested_clonotypes <- 
+  bcr_combined %>% 
+  dplyr::group_by(v_gene_a, v_gene_b, cdr3_b_length, cdr3_a_length) %>% 
+  nest(.key = "barcode")
+
+sample_length = function(x) {
+  length_sample <- nrow(unique(x[,12]))
+  return(length_sample)
+}
+nested_clonotypes$sample_number <- unlist(lapply(nested_clonotypes$barcode, sample_length))
+nested_clonotypes <- nested_clonotypes[nested_clonotypes$sample_number > 1,]
+nested_clonotypes <- nested_clonotypes[order(nested_clonotypes$sample_number, decreasing = T),]
+nested_clonotypes$cluster <- seq(1, nrow(nested_clonotypes))
+  
+unnested_clonotypes <- unnest(nested_clonotypes, cols = barcode)
+colnames(unnested_clonotypes)
+unnested_clusters <- unnested_clonotypes[,c(1:8,12,15,16,18)]
+```
+
+Read in covabdab sequences (cleaned up by Cedric):
+```{r}
+covab_science_cdr3h <- read.csv("/Users/fbieberich/Downloads/science_korea_RBD_scFv_CDR3H.csv", stringsAsFactors = F)
+covab <- read_tsv("/Users/fbieberich/Downloads/covabdab_nt_patient_small_december.tsv")
+covab_science_cdr3h$CDR3H <- paste0("C" ,covab_science_cdr3h$CDR3H , "W")
+unique(covab$CDRH3)
+
+sum(unique(covab$CDRH3) %in% "CARDLYYYGMDVW")
+sum(unique(covab$CDRH3) %in% "CARDLYYYGMDVW")
+sum(unique(bcr_all.final$cdr3_b) %in% "CARDLYYYGMDVW")
+sum(bcr_all.final$cdr3_b %in% unique(covab$CDRH3))
+sum(bcr_all.final$cdr3_b %in% covab_science_cdr3h$CDR3H)
+
+
+      cdr3_b_lv.dist.mat <- stringdist::stringdistmatrix(c(unique(covab_science_cdr3h$CDR3H)),
+                                                   c(unique(bcr_all.final$cdr3_b)),
+                                                     useNames = "strings", method = 'lv')
+      # in row are the aminos with a Levenshtein distance of 0,1,2 to at least one another amino
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[rowSums(sapply(as.data.frame(cdr3_b_lv.dist.mat), '%in%', seq(1:3))) > 0, ]
+      which(as.data.frame(cdr3_b_lv.dist.mat)[1,5420] == 3)
+      colnames(as.data.frame(cdr3_b_lv.dist.mat))[5420]
+      rownames(as.data.frame(cdr3_b_lv.dist.mat))[1]
+
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[,colSums(sapply(as.data.frame(cdr3_b_lv.dist.mat), '%in%', seq(1:2))) > 0]
+      cdr3_b_lv.dist.mat[!cdr3_b_lv.dist.mat %in% seq(1)] <- 0
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[rowSums(cdr3_b_lv.dist.mat)>0,]
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[,colSums(cdr3_b_lv.dist.mat)>0]
+covab[covab$CDRH3 %in% c(rownames(cdr3_b_lv.dist.mat),"CARDLYYYGMDVW"),]
+bcr_all.final[bcr_all.final$cdr3_b %in% c(colnames(cdr3_b_lv.dist.mat),"CARDLYYYGMDVW"),]
+  
+
+```
+
+
+
+Compare for 85% similarity
+```{r}
+shared_clones_set <- list()
+ for(i in 1:nrow(nested_clonotypes)){
+    lv_dist <- round(nested_clonotypes$cdr3_b_length[i]*.15)
+    cdr3_b <- as.data.frame(nested_clonotypes$barcode[[i]])[,4]
+    if(length(unique(cdr3_b)) > 1){
+      cdr3_b_lv.dist.mat <- stringdist::stringdistmatrix(unique(cdr3_b),
+                                                   unique(cdr3_b),
+                                                     useNames = "strings", method = 'lv')
+      # in row are the aminos with a Levenshtein distance of 1 to at least one another amino
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[rowSums(sapply(as.data.frame(cdr3_b_lv.dist.mat), '%in%', seq(1:lv_dist))) > 0, ]
+      # we can filter the relevant columns
+      cdr3_b_lv.dist.mat <- cdr3_b_lv.dist.mat[, colnames(cdr3_b_lv.dist.mat) %in% rownames(cdr3_b_lv.dist.mat)]
+      # values not equal to 1 do not represent a connection. Let's set them to zero
+      cdr3_b_lv.dist.mat[!cdr3_b_lv.dist.mat %in% seq(1:lv_dist)] <- 0
+      # If not connected CDR3beta, clone is not shared between PC and BCR
+      if(dim(cdr3_b_lv.dist.mat)[1] == 0){
+        shared_clones_set[[i]] <- "not_shared"
+      }else{
+        # If connected CDR3beta, clone is shared between PC and BCR
+        shared_clones_set[[i]] <- "shared"
+      }
+      # If connected CDR3beta, clone is shared between PC and BCR
+    }else{
+      shared_clones_set[[i]] <- "shared"
+    }
+ }
+nested_clonotypes$lvdist_check <- do.call(rbind,shared_clones_set)[,1]
+
+unnested_clonotypes <- unnest(nested_clonotypes, cols = barcode)
+colnames(unnested_clonotypes)
+unnested_clusters <- unnested_clonotypes[,c(1:8,12,15,16,18,19)]
+filter(unnested_clusters, lvdist_check == 'shared') %>% pull(cluster) %>% unique
+filter(unnested_clusters, cluster == 1) %>% pull(barcode) -> sars_binding_bcr_pt1
+
+DimPlot(covid.all.BCRonly_nodoub, reduction = "umap", pt.size = .1, label=F, 
+        cells.highlight= old1798_B$barcode[old1798_B$clonotype_new %in% 'clonotype3'],
+        cols.highlight = c("purple"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "Covid"), values = c("grey", "purple"))
+```
+
+
+
+6. Combined VDJ and GEX analysis
+- 1. Heatmap DGE - expansion visualisation:
+```{r}
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- bcell.nocd3nopc
+
+Idents(seurat_object) <- "Explevel" # SCT_snn_res.0.5; orig.ident; Explevel; Sick
+# Make one heatmap with all patients and each expansion level 1:
+tcell.highexp <- subset(seurat_object, idents = "high_exp")
+tcell.lowexp <- subset(seurat_object, idents = "low_exp")
+tcell.unexp <- subset(seurat_object, idents = "un_exp")
+bcell.highexp <- subset(seurat_object, idents = "high_exp")
+bcell.lowexp <- subset(seurat_object, idents = "low_exp")
+bcell.unexp <- subset(seurat_object, idents = "un_exp")
+
+seurat_object <- bcell.highexp
+seurat_object <- bcell.lowexp
+seurat_object <- bcell.unexp
+
+Idents(seurat_object) <- "orig.ident"
+my_levels <- c("old1798",   "old1840",   "old2051",   "old2453",  "young1925", "young2423", "young2425", "young2427")
+seurat_object@active.ident <- factor(x=seurat_object@active.ident, levels = my_levels) 
+
+seurat_object.marker <- FindMarkers(seurat_object, 
+                                    ident.1 = c('high_exp'),
+                                    ident.2 = c("un_exp"),
+                                    only.pos = F, min.pct = 0.5, logfc.threshold = 0.5, max.cells.per.ident	
+= 1000)
+features.sick <- rownames(seurat_object.marker[order(-seurat_object.marker$avg_logFC),])
+#top10 <- seurat_object.marker %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+features.sick.filt <- features.sick[c(-grep(features.sick, pattern = "^M"), -grep(features.sick, pattern = "^R"))]
+
+p1 <- RidgePlot(seurat_object, features = features.sick.filt, log=T)
+features = features.sick.filt
+datalist <- list()
+for(i in 1:length(features)){
+  datalist[[i]] <- aggregate(p1[[i]]$data[,1], by=list(p1[[i]]$data[,2]), FUN=mean)[,2]
+}
+coercdata <- do.call(rbind, datalist)
+colnames(coercdata) <- names(table(p1[[1]]$data[,2]))[table(p1[[1]]$data[,2]) >0]
+rownames(coercdata) <- features
+
+# Make one heatmap with all patients and each expansion level 2:
+coercdata.unexp <- coercdata
+coercdata.lowexp <- coercdata
+coercdata.highexp <- coercdata
+
+colnames(coercdata.highexp) <- paste0(colnames(coercdata.highexp), "high")
+colnames(coercdata.lowexp) <- paste0(colnames(coercdata.lowexp), "low")
+colnames(coercdata.unexp) <- paste0(colnames(coercdata.unexp), "un")
+final <- cbind(coercdata.highexp,
+coercdata.lowexp,
+coercdata.unexp)
+
+coercdata <- coercdata[order(p1$tree_row$order),]
+coercdata <- coercdata[1:75,]
+
+heatmap(coercdata, scale = "row",cexCol = 1,Colv= NA)
+pheatmap(final, scale = "row",cluster_cols =F,main = "DGE by clonal expansion level",color = viridis(100))
+
+seurat_object@meta.data %>% group_by(orig.ident, Explevel) %>% summarise(Freq = n())
+```
+
+- 2. Clonal expansion on umap:
+```{r}
+seurat_object <- bcell.nocd3nopc
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+# High, low and un-expanded clones:
+p1 <- DimPlot(seurat_object, reduction = "umap", pt.size = .1, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= old1798_B_exp, 
+        cols.highlight = c("darkblue", "red", "green"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "un_exp", "low_exp", "high_exp"), values = c("grey", "darkblue", "red", "green"))
+p2 <- DimPlot(seurat_object, reduction = "umap", pt.size = .1, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= old1840_B_exp, 
+        cols.highlight = c("darkblue", "red", "green"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "un_exp", "low_exp", "high_exp"), values = c("grey", "darkblue", "red", "green"))
+p3 <- DimPlot(seurat_object, reduction = "umap", pt.size = .1, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= old2051_B_exp, 
+        cols.highlight = c("darkblue", "red", "green"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "un_exp", "low_exp", "high_exp"), values = c("grey", "darkblue", "red", "green"))
+p4 <- DimPlot(seurat_object, reduction = "umap", pt.size = .1, group.by = "SCT_snn_res.0.3", label=F, 
+        cells.highlight= old2453_B_exp, 
+        cols.highlight = c("darkblue", "red", "green"), cols= "grey") + 
+  scale_color_manual(labels = c("rest", "un_exp", "low_exp", "high_exp"), values = c("grey", "darkblue", "red", "green"))
+CombinePlots(list(p1,p2,p3,p4),ncol = 4)
+```
+
+7. Pseudotime analysis with Slingshot:
+```{r}
+seurat_object <- bcell.nocd3nopc
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd8
+seurat_object <- covid.all.TCRonly_nodoub_sct.cd4
+
+sds.b <- slingshot(Embeddings(bcell.nocd3nopc, "umap"), 
+                     clusterLabels = bcell.nocd3nopc$seurat_clusters, 
+                 start.clus = 3, stretch = 0)
+sds.cd8 <- slingshot(Embeddings(covid.all.TCRonly_nodoub_sct.cd8, "umap"), 
+                     clusterLabels = covid.all.TCRonly_nodoub_sct.cd8$seurat_clusters, 
+                 start.clus = 0, stretch = 0)
+sds.cd4 <- slingshot(Embeddings(covid.all.TCRonly_nodoub_sct.cd4, "umap"), 
+                     clusterLabels = covid.all.TCRonly_nodoub_sct.cd4$seurat_clusters, 
+                 start.clus = 0, stretch = 0)
+
+plot(reducedDim(sds.b), pch = 16, cex = 0.2)
+lines(sds.cd4, lwd = 2, type = 'lineages', col = 'black')
+```
