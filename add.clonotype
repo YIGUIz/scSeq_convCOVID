@@ -1,0 +1,32 @@
+add.clonotype <- function(tcr_location, seurat_obj, prefix){
+    tcr <- read.csv(paste(tcr_location,"filtered_contig_annotations.csv", sep=""))
+
+    # Remove the -1 at the end of each barcode.
+    # Subsets so only the first line of each barcode is kept,
+    # as each entry for given barcode will have same clonotype.
+    #tcr$barcode <- gsub("-1", "", tcr$barcode)
+    tcr$barcode <- paste0(prefix, tcr$barcode)
+    tcr <- tcr[!duplicated(tcr$barcode), ]
+
+    # Only keep the barcode and clonotype columns. 
+    # We'll get additional clonotype info from the clonotype table.
+    tcr <- tcr[,c("barcode", "raw_clonotype_id", "v_gene", "j_gene", "c_gene")]
+    names(tcr)[names(tcr) == "raw_clonotype_id"] <- "clonotype_id"
+
+    # Clonotype-centric info.
+    clono <- read.csv(paste(tcr_location,"clonotypes.csv", sep=""))
+
+    # Slap the AA sequences onto our original table by clonotype_id.
+    tcr <- merge(tcr, clono[, c("clonotype_id", "cdr3s_aa")])
+    tcr$clonotype_id <- paste0(prefix, tcr$clonotype_id)
+    
+    # Reorder so barcodes are first column and set them as rownames.
+    tcr <- tcr[, c(2,1,6,3,4,5)]
+    rownames(tcr) <- tcr[,1]
+    tcr[,1] <- NULL
+
+    # Add to the Seurat object's metadata.
+    #clono_seurat <- AddMetaData(object=seurat_obj, metadata=tcr)
+    tcr
+    return(tcr)
+}
