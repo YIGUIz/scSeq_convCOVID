@@ -1,0 +1,11 @@
+expand.barc <- function(dataset_TCR = old1840_T){
+  high_exp <- names(table(as.data.frame(dataset_TCR)[dataset_TCR$same_clone,15])[table(as.data.frame(dataset_TCR)[dataset_TCR$same_clone,15])>=5])
+  low_exp <- names(table(as.data.frame(dataset_TCR)[dataset_TCR$same_clone,15])[table(as.data.frame(dataset_TCR)[dataset_TCR$same_clone,15])<5])
+  un_exp <- names(table(as.data.frame(dataset_TCR)[is.na(dataset_TCR$same_clone),15]))
+
+  high_exp_barcode <- dataset_TCR$barcode[dataset_TCR$clonotype_new %in% high_exp]
+  low_exp_barcode <- dataset_TCR$barcode[dataset_TCR$clonotype_new %in% low_exp]
+  un_exp_barcode <- dataset_TCR$barcode[dataset_TCR$clonotype_new %in% un_exp]
+
+  return(list(high_exp_barcode, low_exp_barcode, un_exp_barcode))
+}
